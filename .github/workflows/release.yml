@@ -67,7 +67,7 @@ jobs:
       - name: Create release commit and tag via API
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           NEXT_VERSION: ${{ steps.next.outputs.version }}
         run: |
           # Get the updated file content as base64
