@@ -64,16 +64,73 @@ jobs:
       - name: Verify build
         run: uv build
 
-      - name: Commit and tag
+      - name: Create release commit and tag via API
         if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_VERSION: ${{ steps.next.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
-          git commit -m "chore(release): ${{ steps.next.outputs.version }}"
-          git tag "v${{ steps.next.outputs.version }}"
-          git push origin main
-          git push origin "v${{ steps.next.outputs.version }}"
+          # Get the updated file content as base64
+          CONTENT=$(base64 -w 0 pyproject.toml)
+          MAIN_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
+
+          # Create a blob for the updated pyproject.toml
+          BLOB_SHA=$(gh api repos/${{ github.repository }}/git/blobs \
+            -X POST \
+            -f encoding=base64 \
+            -f content="$CONTENT" \
+            --jq '.sha')
+
+          # Get the tree of the current commit
+          BASE_TREE=$(gh api repos/${{ github.repository }}/git/commits/$MAIN_SHA --jq '.tree.sha')
+
+          # Create a new tree with the updated file
+          NEW_TREE=$(gh api repos/${{ github.repository }}/git/trees \
+            -X POST \
+            --input - <<EOF | jq -r '.sha'
+          {
+            "base_tree": "$BASE_TREE",
+            "tree": [
+              {
+                "path": "pyproject.toml",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "$BLOB_SHA"
+              }
+            ]
+          }
+          EOF
+          )
+
+          # Create the commit
+          COMMIT_SHA=$(gh api repos/${{ github.repository }}/git/commits \
+            -X POST \
+            --input - <<EOF | jq -r '.sha'
+          {
+            "message": "chore(release): $NEXT_VERSION",
+            "tree": "$NEW_TREE",
+            "parents": ["$MAIN_SHA"],
+            "author": {
+              "name": "github-actions[bot]",
+              "email": "github-actions[bot]@users.noreply.github.com"
+            }
+          }
+          EOF
+          )
+
+          # Update main to point to the new commit
+          gh api repos/${{ github.repository }}/git/refs/heads/main \
+            -X PATCH \
+            -f sha="$COMMIT_SHA" \
+            -F force=false
+
+          # Create the tag reference
+          gh api repos/${{ github.repository }}/git/refs \
+            -X POST \
+            -f ref="refs/tags/v$NEXT_VERSION" \
+            -f sha="$COMMIT_SHA"
+
+          echo "Created commit $COMMIT_SHA and tag v$NEXT_VERSION"
 
       - name: Dry run summary
         if: ${{ inputs.dry_run }}
