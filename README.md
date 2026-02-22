@@ -10,25 +10,25 @@
 
 Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
 
-## Quick Install
+## 1-Click Installation
 
-> Prerequisite: Install `uv` first (required for all `uvx` install flows, including one-click Cursor/VS Code buttons). [Install uv](https://docs.astral.sh/uv/getting-started/installation/).
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html?install=cursor)
 
-> **Tip:** For a unified installation experience across all IDEs, visit the **[MCP Installation Gateway](https://vish288.github.io/mcp-gitlab-cursor-redirect.html)**.
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html?install=vscode) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html?install=vscode-insiders)
 
-### Cursor
+> **💡 Tip:** For other AI assistants (Claude Code, Windsurf, IntelliJ), visit the **[GitLab MCP Installation Gateway](https://vish288.github.io/mcp-gitlab-cursor-redirect.html)**.
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html?install=cursor)
+<details>
+<summary><b>Manual Setup Guides (Click to expand)</b></summary>
+<br/>
+
+> Prerequisite: Install `uv` first (required for all `uvx` install flows). [Install uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ### Claude Code
 
 ```bash
 claude mcp add gitlab -- uvx mcp-gitlab
 ```
-
-### VS Code
-
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html?install=vscode) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html?install=vscode-insiders)
 
 ### Windsurf & IntelliJ
 
@@ -57,6 +57,8 @@ claude mcp add gitlab -- uvx mcp-gitlab
 ```bash
 uv pip install mcp-gitlab
 ```
+
+</details>
 
 ## Configuration
 
