@@ -22,9 +22,13 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 claude mcp add gitlab -- uvx mcp-gitlab
 ```
 
-### Windsurf / VS Code
+### VS Code
 
-Add to your MCP config file:
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%20%22stdio%22%2C%20%22command%22%3A%20%22uvx%22%2C%20%22args%22%3A%20%5B%22mcp-gitlab%22%5D%2C%20%22env%22%3A%20%7B%22GITLAB_URL%22%3A%20%22%24%7Binput%3Agitlab-url%7D%22%2C%20%22GITLAB_TOKEN%22%3A%20%22%24%7Binput%3Agitlab-token%7D%22%7D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%20%22stdio%22%2C%20%22command%22%3A%20%22uvx%22%2C%20%22args%22%3A%20%5B%22mcp-gitlab%22%5D%2C%20%22env%22%3A%20%7B%22GITLAB_URL%22%3A%20%22%24%7Binput%3Agitlab-url%7D%22%2C%20%22GITLAB_TOKEN%22%3A%20%22%24%7Binput%3Agitlab-token%7D%22%7D%7D)
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
 
 ```json
 {
@@ -74,8 +78,8 @@ uv pip install mcp-gitlab
 | Claude Desktop | Yes | `claude_desktop_config.json` |
 | Claude Code | Yes | `claude mcp add` |
 | Cursor | Yes | One-click deeplink or `.cursor/mcp.json` |
+| VS Code Copilot | Yes | One-click deeplink or `.vscode/mcp.json` |
 | Windsurf | Yes | `~/.codeium/windsurf/mcp_config.json` |
-| VS Code Copilot | Yes | `.vscode/mcp.json` |
 | Any MCP client | Yes | stdio or HTTP transport |
 
 ## Tools (76)
