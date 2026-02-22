@@ -14,7 +14,7 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 
 ### Cursor
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=mcp-gitlab&config=eyJtY3BTZXJ2ZXJzIjogeyJnaXRsYWIiOiB7ImNvbW1hbmQiOiAidXZ4IiwgImFyZ3MiOiBbIm1jcC1naXRsYWIiXSwgImVudiI6IHsiR0lUTEFCX1VSTCI6ICJodHRwczovL2dpdGxhYi5leGFtcGxlLmNvbSIsICJHSVRMQUJfVE9LRU4iOiAieW91ci10b2tlbiJ9fX19)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html)
 
 ### Claude Code
 
