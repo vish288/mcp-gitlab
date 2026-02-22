@@ -24,9 +24,26 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 claude mcp add gitlab -- uvx mcp-gitlab
 ```
 
-### VS Code
+### IntelliJ
 
-> IntelliJ one-click install support is planned for parity with VS Code/Cursor flows.
+In IntelliJ-based IDEs, add MCP config using a project `.mcp.json` file:
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "uvx",
+      "args": ["mcp-gitlab"],
+      "env": {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+### VS Code
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22mcp-gitlab%22%5D%2C%22env%22%3A%7B%22GITLAB_URL%22%3A%22%24%7Binput%3Agitlab-url%7D%22%2C%22GITLAB_TOKEN%22%3A%22%24%7Binput%3Agitlab-token%7D%22%7D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22mcp-gitlab%22%5D%2C%22env%22%3A%7B%22GITLAB_URL%22%3A%22%24%7Binput%3Agitlab-url%7D%22%2C%22GITLAB_TOKEN%22%3A%22%24%7Binput%3Agitlab-token%7D%22%7D%7D&quality=insiders)
 
