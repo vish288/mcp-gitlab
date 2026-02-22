@@ -32,6 +32,8 @@ claude mcp add gitlab -- uvx mcp-gitlab
 
 Add to `~/.codeium/windsurf/mcp_config.json`:
 
+> The actual server config starts at `gitlab` inside `mcpServers`.
+
 ```json
 {
   "mcpServers": {
