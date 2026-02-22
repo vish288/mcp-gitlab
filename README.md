@@ -62,13 +62,13 @@ uv pip install mcp-gitlab
 
 ## Configuration
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITLAB_URL` | Yes | GitLab instance URL (e.g. `https://gitlab.example.com`) |
-| `GITLAB_TOKEN` | Yes | Authentication token (see below) |
-| `GITLAB_READ_ONLY` | No | Set to `true` to disable write operations |
-| `GITLAB_TIMEOUT` | No | Request timeout in seconds (default: 30) |
-| `GITLAB_SSL_VERIFY` | No | Set to `false` to skip SSL verification |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITLAB_URL` | **Yes** | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
+| `GITLAB_TOKEN` | **Yes** | - | Authentication token (see below) |
+| `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
+| `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
+| `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
 
 ### Supported Token Types
 
