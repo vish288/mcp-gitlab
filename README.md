@@ -14,6 +14,8 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 
 > Prerequisite: Install `uv` first (required for all `uvx` install flows, including one-click Cursor/VS Code buttons). [Install uv](https://docs.astral.sh/uv/getting-started/installation/).
 
+> **Tip:** For a unified installation experience across all IDEs, visit the **[MCP Installation Gateway](https://vish288.github.io/mcp-gitlab-cursor-redirect.html)**.
+
 ### Cursor
 
 [![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html)
@@ -38,7 +40,6 @@ claude mcp add gitlab -- uvx mcp-gitlab
 ```json
 {
   "mcpServers": {
-    ...
     "gitlab": {
       "command": "uvx",
       "args": ["mcp-gitlab"],
@@ -46,8 +47,7 @@ claude mcp add gitlab -- uvx mcp-gitlab
         "GITLAB_URL": "https://gitlab.example.com",
         "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
       }
-    },
-    ...
+    }
   }
 }
 ```
