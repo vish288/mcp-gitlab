@@ -12,9 +12,11 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 
 ## Quick Install
 
+> Prerequisite: Install `uv` first (required for all `uvx` install flows, including one-click Cursor/VS Code buttons). [Install uv](https://docs.astral.sh/uv/getting-started/installation/).
+
 ### Cursor
 
-[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=mcp-gitlab&config=eyJtY3BTZXJ2ZXJzIjogeyJnaXRsYWIiOiB7ImNvbW1hbmQiOiAidXZ4IiwgImFyZ3MiOiBbIm1jcC1naXRsYWIiXSwgImVudiI6IHsiR0lUTEFCX1VSTCI6ICJodHRwczovL2dpdGxhYi5leGFtcGxlLmNvbSIsICJHSVRMQUJfVE9LRU4iOiAieW91ci10b2tlbiJ9fX19)
+[![Install MCP Server](https://cursor.com/deeplink/mcp-install-dark.svg)](https://vish288.github.io/mcp-gitlab-cursor-redirect.html)
 
 ### Claude Code
 
@@ -24,11 +26,13 @@ claude mcp add gitlab -- uvx mcp-gitlab
 
 ### VS Code
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%20%22stdio%22%2C%20%22command%22%3A%20%22uvx%22%2C%20%22args%22%3A%20%5B%22mcp-gitlab%22%5D%2C%20%22env%22%3A%20%7B%22GITLAB_URL%22%3A%20%22%24%7Binput%3Agitlab-url%7D%22%2C%20%22GITLAB_TOKEN%22%3A%20%22%24%7Binput%3Agitlab-token%7D%22%7D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%20%22stdio%22%2C%20%22command%22%3A%20%22uvx%22%2C%20%22args%22%3A%20%5B%22mcp-gitlab%22%5D%2C%20%22env%22%3A%20%7B%22GITLAB_URL%22%3A%20%22%24%7Binput%3Agitlab-url%7D%22%2C%20%22GITLAB_TOKEN%22%3A%20%22%24%7Binput%3Agitlab-token%7D%22%7D%7D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22mcp-gitlab%22%5D%2C%22env%22%3A%7B%22GITLAB_URL%22%3A%22%24%7Binput%3Agitlab-url%7D%22%2C%22GITLAB_TOKEN%22%3A%22%24%7Binput%3Agitlab-token%7D%22%7D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=mcp-gitlab&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22mcp-gitlab%22%5D%2C%22env%22%3A%7B%22GITLAB_URL%22%3A%22%24%7Binput%3Agitlab-url%7D%22%2C%22GITLAB_TOKEN%22%3A%22%24%7Binput%3Agitlab-token%7D%22%7D%7D&quality=insiders)
 
 ### Windsurf
 
 Add to `~/.codeium/windsurf/mcp_config.json`:
+
+> The actual server config starts at `gitlab` inside `mcpServers`.
 
 ```json
 {
