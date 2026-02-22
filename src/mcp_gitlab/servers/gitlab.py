@@ -901,8 +901,9 @@ async def gitlab_merge_mr_sequence(
 
         return _ok({"status": "all_merged", "merged": merged})
     except Exception as e:
-        result = {"error": str(e), "merged_so_far": merged}
-        return json.dumps(result, indent=2)
+        err = _err(e)
+        merged_info = json.dumps({"merged_so_far": merged})
+        return f"{err}\n{merged_info}"
 
 
 @mcp.tool(tags={"gitlab", "merge_requests", "write"})

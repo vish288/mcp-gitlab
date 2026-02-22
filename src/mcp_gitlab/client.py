@@ -267,13 +267,6 @@ class GitLabClient:
             params={"from": from_ref, "to": to_ref},
         )
 
-    async def list_repository_tree(
-        self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
-        enc = self._encode_id(project_id)
-        p = {"per_page": 100, "recursive": True, **(params or {})}
-        return await self.get(f"/projects/{enc}/repository/tree", params=p)
-
     # ── Merge Requests ────────────────────────────────────────────
 
     async def list_merge_requests(

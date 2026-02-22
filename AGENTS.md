@@ -1,6 +1,6 @@
 # mcp-gitlab — Agent Context
 
-MCP server providing 65+ tools for the GitLab REST API v4.
+MCP server providing 76 tools for the GitLab REST API v4.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ MCP server providing 65+ tools for the GitLab REST API v4.
 
 ## Tool Categories
 
-Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Requests (9), MR Notes (6), MR Discussions (4), Pipelines (5), Jobs (4), Tags (4), Releases (5), CI/CD Variables (8), Issues (5)
+Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Requests (8), MR Notes (6), MR Discussions (4), Pipelines (5), Jobs (4), Tags (4), Releases (5), CI/CD Variables (8), Issues (5)
 
 ## Environment Variables
 
