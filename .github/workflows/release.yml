@@ -135,24 +135,18 @@ jobs:
           MAIN_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
           BASE_TREE=$(gh api repos/${{ github.repository }}/git/commits/$MAIN_SHA --jq '.tree.sha')
 
-          # Create blobs for all modified files
-          PYPROJECT_BLOB=$(gh api repos/${{ github.repository }}/git/blobs \
-            -X POST \
-            -f encoding=base64 \
-            -f content="$(base64 -w 0 pyproject.toml)" \
-            --jq '.sha')
+          # Create blobs for all modified files (use temp files to avoid ARG_MAX limits on large files)
+          create_blob() {
+            local file="$1"
+            base64 -w 0 "$file" > /tmp/b64content.txt
+            jq -Rs '{"encoding":"base64","content":rtrimstr("\n")}' /tmp/b64content.txt > /tmp/blob.json
+            gh api repos/${{ github.repository }}/git/blobs \
+              -X POST --input /tmp/blob.json --jq '.sha'
+          }
 
-          UVLOCK_BLOB=$(gh api repos/${{ github.repository }}/git/blobs \
-            -X POST \
-            -f encoding=base64 \
-            -f content="$(base64 -w 0 uv.lock)" \
-            --jq '.sha')
-
-          CHANGELOG_BLOB=$(gh api repos/${{ github.repository }}/git/blobs \
-            -X POST \
-            -f encoding=base64 \
-            -f content="$(base64 -w 0 CHANGELOG.md)" \
-            --jq '.sha')
+          PYPROJECT_BLOB=$(create_blob pyproject.toml)
+          UVLOCK_BLOB=$(create_blob uv.lock)
+          CHANGELOG_BLOB=$(create_blob CHANGELOG.md)
 
           # Create tree with all 3 files
           NEW_TREE=$(gh api repos/${{ github.repository }}/git/trees \
