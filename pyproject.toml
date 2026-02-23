@@ -1,6 +1,6 @@
 [project]
 name = "mcp-gitlab"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server for GitLab API — projects, MRs, pipelines, CI/CD variables, approvals, and more"
 readme = "README.md"
 license = {text = "MIT"}
