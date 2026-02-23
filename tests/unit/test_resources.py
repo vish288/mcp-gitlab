@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from mcp_gitlab.servers.resources import (
-    _CODEOWNERS_CONTENT,
     _CODE_REVIEW_CONTENT,
+    _CODEOWNERS_CONTENT,
     _CONVENTIONAL_COMMITS_CONTENT,
-    _GITLAB_CI_CONTENT,
     _GIT_WORKFLOW_CONTENT,
+    _GITLAB_CI_CONTENT,
     _MR_HYGIENE_CONTENT,
-    codeowners_guide,
     code_review_guide,
+    codeowners_guide,
     conventional_commits_rules,
     git_workflow_rules,
     gitlab_ci_rules,

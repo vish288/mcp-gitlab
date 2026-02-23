@@ -816,7 +816,7 @@ wheels = [
 
 [[package]]
 name = "mcp-gitlab"
-version = "0.3.1"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
