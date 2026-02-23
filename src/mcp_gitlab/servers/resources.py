@@ -11,7 +11,14 @@ _RESOURCES_DIR = Path(__file__).resolve().parent.parent / "resources"
 
 def _load(filename: str) -> str:
     """Load a resource markdown file from the resources directory."""
-    return (_RESOURCES_DIR / filename).read_text(encoding="utf-8")
+    if "/" in filename or "\\" in filename or ".." in filename:
+        msg = f"Invalid resource filename: {filename}"
+        raise ValueError(msg)
+    path = _RESOURCES_DIR / filename
+    if not path.resolve().is_relative_to(_RESOURCES_DIR.resolve()):
+        msg = f"Invalid resource filename: {filename}"
+        raise ValueError(msg)
+    return path.read_text(encoding="utf-8")
 
 
 # ════════════════════════════════════════════════════════════════════

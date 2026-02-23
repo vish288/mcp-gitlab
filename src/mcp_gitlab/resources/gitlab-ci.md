@@ -13,7 +13,7 @@ workflow:
       when: always
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
-    - if: $CI_COMMIT_MESSAGE =~ /^chore\\(release\\):/
+    - if: $CI_COMMIT_MESSAGE =~ /^chore\(release\):/
       when: never
     - when: never
 ```
@@ -169,7 +169,7 @@ deploy:prod:
 ```yaml
 workflow:
   rules:
-    - if: $CI_COMMIT_MESSAGE =~ /^chore\\(release\\):/
+    - if: $CI_COMMIT_MESSAGE =~ /^chore\(release\):/
       when: never
     - if: $CI_COMMIT_TAG
       when: always

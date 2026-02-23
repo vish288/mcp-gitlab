@@ -86,6 +86,34 @@ class TestResourceFiles:
             assert '"""' not in content, f"{filename} contains triple-quote artifact"
 
 
+class TestLoadSecurity:
+    """Verify _load() rejects path traversal attempts."""
+
+    def test_rejects_directory_traversal(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid resource filename"):
+            _load("../../../etc/passwd")
+
+    def test_rejects_forward_slash(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid resource filename"):
+            _load("subdir/file.md")
+
+    def test_rejects_backslash(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid resource filename"):
+            _load("subdir\\file.md")
+
+    def test_rejects_dotdot_only(self) -> None:
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid resource filename"):
+            _load("..")
+
+
 class TestResourceRegistration:
     """Verify resources are importable and return content."""
 

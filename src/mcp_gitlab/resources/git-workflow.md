@@ -85,7 +85,7 @@ Disable the merge commit button in repository settings. Default to squash-merge 
 ## Stale Branch Cleanup
 
 ```bash
-git branch -r --merged origin/main | grep -v 'main\\|release'
+git branch -r --merged origin/main | grep -v 'main\|release'
 ```
 
 Enable automatic branch deletion on merge in repository settings.
