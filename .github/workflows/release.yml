@@ -61,6 +61,68 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.next.outputs.version }}\"/" pyproject.toml
           cat pyproject.toml | grep '^version'
 
+      - name: Regenerate uv.lock
+        run: uv lock
+
+      - name: Generate CHANGELOG.md
+        id: changelog
+        env:
+          NEXT_VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          # Find previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+          fi
+
+          DATE=$(date -u +%Y-%m-%d)
+          ENTRY="## [${NEXT_VERSION}] - ${DATE}"$'\n'
+
+          # Collect commits grouped by type
+          for type_label in "feat:Features" "fix:Bug Fixes" "refactor:Refactoring" "docs:Documentation" "perf:Performance" "test:Tests" "chore:Chores"; do
+            type="${type_label%%:*}"
+            label="${type_label#*:}"
+            commits=$(git log "$RANGE" --pretty=format:"- %s (%h)" --grep="^${type}" 2>/dev/null || true)
+            if [ -n "$commits" ]; then
+              ENTRY+=$'\n'"### ${label}"$'\n'
+              ENTRY+="${commits}"$'\n'
+            fi
+          done
+
+          # Collect commits that don't match any conventional type
+          other=$(git log "$RANGE" --pretty=format:"%s|%h" 2>/dev/null | \
+            grep -v -E "^(feat|fix|refactor|docs|perf|test|chore)(\(.*\))?:" || true)
+          if [ -n "$other" ]; then
+            ENTRY+=$'\n'"### Other"$'\n'
+            echo "$other" | while IFS='|' read -r msg hash; do
+              ENTRY+="- ${msg} (${hash})"$'\n'
+            done
+          fi
+
+          # Prepend to existing CHANGELOG.md or create new
+          if [ -f CHANGELOG.md ]; then
+            # Insert new entry after the first line (# Changelog header)
+            {
+              head -1 CHANGELOG.md
+              echo ""
+              echo "$ENTRY"
+              tail -n +2 CHANGELOG.md
+            } > CHANGELOG.tmp
+            mv CHANGELOG.tmp CHANGELOG.md
+          else
+            {
+              echo "# Changelog"
+              echo ""
+              echo "$ENTRY"
+            } > CHANGELOG.md
+          fi
+
+          # Save entry for summary display
+          echo "$ENTRY" > /tmp/changelog-entry.txt
+          echo "Generated CHANGELOG.md entry for v${NEXT_VERSION}"
+
       - name: Verify build
         run: uv build
 
@@ -70,21 +132,29 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           NEXT_VERSION: ${{ steps.next.outputs.version }}
         run: |
-          # Get the updated file content as base64
-          CONTENT=$(base64 -w 0 pyproject.toml)
           MAIN_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
-
-          # Create a blob for the updated pyproject.toml
-          BLOB_SHA=$(gh api repos/${{ github.repository }}/git/blobs \
-            -X POST \
-            -f encoding=base64 \
-            -f content="$CONTENT" \
-            --jq '.sha')
-
-          # Get the tree of the current commit
           BASE_TREE=$(gh api repos/${{ github.repository }}/git/commits/$MAIN_SHA --jq '.tree.sha')
 
-          # Create a new tree with the updated file
+          # Create blobs for all modified files
+          PYPROJECT_BLOB=$(gh api repos/${{ github.repository }}/git/blobs \
+            -X POST \
+            -f encoding=base64 \
+            -f content="$(base64 -w 0 pyproject.toml)" \
+            --jq '.sha')
+
+          UVLOCK_BLOB=$(gh api repos/${{ github.repository }}/git/blobs \
+            -X POST \
+            -f encoding=base64 \
+            -f content="$(base64 -w 0 uv.lock)" \
+            --jq '.sha')
+
+          CHANGELOG_BLOB=$(gh api repos/${{ github.repository }}/git/blobs \
+            -X POST \
+            -f encoding=base64 \
+            -f content="$(base64 -w 0 CHANGELOG.md)" \
+            --jq '.sha')
+
+          # Create tree with all 3 files
           NEW_TREE=$(gh api repos/${{ github.repository }}/git/trees \
             -X POST \
             --input - <<EOF | jq -r '.sha'
@@ -95,7 +165,19 @@ jobs:
                 "path": "pyproject.toml",
                 "mode": "100644",
                 "type": "blob",
-                "sha": "$BLOB_SHA"
+                "sha": "$PYPROJECT_BLOB"
+              },
+              {
+                "path": "uv.lock",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "$UVLOCK_BLOB"
+              },
+              {
+                "path": "CHANGELOG.md",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "$CHANGELOG_BLOB"
               }
             ]
           }
@@ -140,9 +222,19 @@ jobs:
           echo "- Next: ${{ steps.next.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Bump: ${{ inputs.bump }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- No changes pushed." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Changelog Preview" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/changelog-entry.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Release summary
         if: ${{ !inputs.dry_run }}
         run: |
           echo "## Release v${{ steps.next.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Tag pushed. Publish workflow will deploy to PyPI." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Changelog Entry" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/changelog-entry.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
