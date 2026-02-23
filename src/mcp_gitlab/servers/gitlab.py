@@ -61,6 +61,20 @@ def _ok(data: Any) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
+def _paginated(items: list, total: int | None = None) -> str:
+    """Wrap a list response with pagination metadata."""
+    return json.dumps(
+        {
+            "items": items,
+            "count": len(items),
+            "total": total,
+            "has_more": total is not None and len(items) < total,
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
 def _err(error: Exception) -> str:
     detail: dict[str, Any] = {"error": str(error)}
     from ..exceptions import (
@@ -99,7 +113,7 @@ def _err(error: Exception) -> str:
 
 @mcp.tool(
     tags={"gitlab", "projects", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_project(
     ctx: Context,
@@ -118,7 +132,10 @@ async def gitlab_get_project(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "projects", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "projects", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_project(
     ctx: Context,
     name: Annotated[str, Field(description="Project name", min_length=1)],
@@ -153,7 +170,7 @@ async def gitlab_create_project(
 
 @mcp.tool(
     tags={"gitlab", "projects", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_project(
     ctx: Context,
@@ -170,7 +187,7 @@ async def gitlab_delete_project(
 
 @mcp.tool(
     tags={"gitlab", "projects", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_project_merge_settings(
     ctx: Context,
@@ -218,7 +235,7 @@ async def gitlab_update_project_merge_settings(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_project_approvals(
     ctx: Context,
@@ -234,7 +251,7 @@ async def gitlab_get_project_approvals(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_project_approvals(
     ctx: Context,
@@ -281,7 +298,7 @@ async def gitlab_update_project_approvals(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_project_approval_rules(
     ctx: Context,
@@ -290,12 +307,15 @@ async def gitlab_list_project_approval_rules(
     """List project-level approval rules."""
     try:
         data = await _get_client(ctx).list_project_approval_rules(project_id)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "approvals", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "approvals", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_project_approval_rule(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -323,7 +343,7 @@ async def gitlab_create_project_approval_rule(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_project_approval_rule(
     ctx: Context,
@@ -356,7 +376,7 @@ async def gitlab_update_project_approval_rule(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_project_approval_rule(
     ctx: Context,
@@ -379,7 +399,7 @@ async def gitlab_delete_project_approval_rule(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_mr_approval_rules(
     ctx: Context,
@@ -389,12 +409,15 @@ async def gitlab_list_mr_approval_rules(
     """List merge request approval rules."""
     try:
         data = await _get_client(ctx).list_mr_approval_rules(project_id, mr_iid)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "approvals", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "approvals", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_mr_approval_rule(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -423,7 +446,7 @@ async def gitlab_create_mr_approval_rule(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_mr_approval_rule(
     ctx: Context,
@@ -455,7 +478,7 @@ async def gitlab_update_mr_approval_rule(
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_mr_approval_rule(
     ctx: Context,
@@ -479,7 +502,7 @@ async def gitlab_delete_mr_approval_rule(
 
 @mcp.tool(
     tags={"gitlab", "groups", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_groups(
     ctx: Context,
@@ -496,14 +519,14 @@ async def gitlab_list_groups(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_groups(params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "groups", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_group(
     ctx: Context,
@@ -517,7 +540,10 @@ async def gitlab_get_group(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "groups", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "groups", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_share_project_with_group(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -542,7 +568,7 @@ async def gitlab_share_project_with_group(
 
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_unshare_project_with_group(
     ctx: Context,
@@ -558,7 +584,10 @@ async def gitlab_unshare_project_with_group(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "groups", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "groups", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_share_group_with_group(
     ctx: Context,
     target_group_id: Annotated[str, Field(description="Target group ID or path")],
@@ -581,7 +610,7 @@ async def gitlab_share_group_with_group(
 
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_unshare_group_with_group(
     ctx: Context,
@@ -604,7 +633,7 @@ async def gitlab_unshare_group_with_group(
 
 @mcp.tool(
     tags={"gitlab", "branches", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_branches(
     ctx: Context,
@@ -622,12 +651,15 @@ async def gitlab_list_branches(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_branches(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "branches", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "branches", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_branch(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -645,7 +677,7 @@ async def gitlab_create_branch(
 
 @mcp.tool(
     tags={"gitlab", "branches", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_branch(
     ctx: Context,
@@ -668,7 +700,7 @@ async def gitlab_delete_branch(
 
 @mcp.tool(
     tags={"gitlab", "commits", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_commits(
     ctx: Context,
@@ -695,14 +727,14 @@ async def gitlab_list_commits(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_commits(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "commits", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_commit(
     ctx: Context,
@@ -722,7 +754,10 @@ async def gitlab_get_commit(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "commits", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "commits", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_commit(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -757,7 +792,7 @@ async def gitlab_create_commit(
 
 @mcp.tool(
     tags={"gitlab", "commits", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_compare(
     ctx: Context,
@@ -782,7 +817,7 @@ async def gitlab_compare(
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_mrs(
     ctx: Context,
@@ -815,14 +850,14 @@ async def gitlab_list_mrs(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_merge_requests(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_mr(
     ctx: Context,
@@ -840,7 +875,10 @@ async def gitlab_get_mr(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "merge_requests", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_mr(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -881,7 +919,7 @@ async def gitlab_create_mr(
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_mr(
     ctx: Context,
@@ -924,7 +962,10 @@ async def gitlab_update_mr(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "merge_requests", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_merge_mr(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -963,7 +1004,10 @@ async def gitlab_merge_mr(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "merge_requests", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_merge_mr_sequence(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1015,7 +1059,10 @@ async def gitlab_merge_mr_sequence(
         return json.dumps(detail, indent=2, ensure_ascii=False)
 
 
-@mcp.tool(tags={"gitlab", "merge_requests", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_rebase_mr(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1033,7 +1080,7 @@ async def gitlab_rebase_mr(
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_mr_changes(
     ctx: Context,
@@ -1055,7 +1102,7 @@ async def gitlab_mr_changes(
 
 @mcp.tool(
     tags={"gitlab", "notes", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_mr_notes(
     ctx: Context,
@@ -1068,12 +1115,15 @@ async def gitlab_list_mr_notes(
         data = await _get_client(ctx).list_mr_notes(project_id, mr_iid)
         if not include_system:
             data = [n for n in data if not n.get("system", False)]
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "notes", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "notes", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_add_mr_note(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1094,7 +1144,7 @@ async def gitlab_add_mr_note(
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_mr_note(
     ctx: Context,
@@ -1113,7 +1163,7 @@ async def gitlab_delete_mr_note(
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_mr_note(
     ctx: Context,
@@ -1131,7 +1181,10 @@ async def gitlab_update_mr_note(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "notes", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "notes", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_award_emoji(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1150,7 +1203,7 @@ async def gitlab_award_emoji(
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_remove_emoji(
     ctx: Context,
@@ -1175,7 +1228,7 @@ async def gitlab_remove_emoji(
 
 @mcp.tool(
     tags={"gitlab", "discussions", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_mr_discussions(
     ctx: Context,
@@ -1194,12 +1247,15 @@ async def gitlab_list_mr_discussions(
             notes = d.get("notes", [])
             if any(not n.get("system", False) for n in notes):
                 filtered.append(d)
-        return _ok(filtered)
+        return _paginated(filtered)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "discussions", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "discussions", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_mr_discussion(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1260,7 +1316,10 @@ async def gitlab_create_mr_discussion(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "discussions", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "discussions", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_reply_to_discussion(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1279,7 +1338,7 @@ async def gitlab_reply_to_discussion(
 
 @mcp.tool(
     tags={"gitlab", "discussions", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_resolve_discussion(
     ctx: Context,
@@ -1306,7 +1365,7 @@ async def gitlab_resolve_discussion(
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_pipelines(
     ctx: Context,
@@ -1335,14 +1394,14 @@ async def gitlab_list_pipelines(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_pipelines(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_pipeline(
     ctx: Context,
@@ -1362,7 +1421,10 @@ async def gitlab_get_pipeline(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "pipelines", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "pipelines", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_pipeline(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1381,7 +1443,10 @@ async def gitlab_create_pipeline(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "pipelines", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "pipelines", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_retry_pipeline(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1398,7 +1463,7 @@ async def gitlab_retry_pipeline(
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_cancel_pipeline(
     ctx: Context,
@@ -1419,7 +1484,10 @@ async def gitlab_cancel_pipeline(
 # ════════════════════════════════════════════════════════════════════
 
 
-@mcp.tool(tags={"gitlab", "jobs", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "jobs", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_retry_job(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1434,7 +1502,10 @@ async def gitlab_retry_job(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "jobs", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "jobs", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_play_job(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1455,7 +1526,7 @@ async def gitlab_play_job(
 
 @mcp.tool(
     tags={"gitlab", "jobs", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_cancel_job(
     ctx: Context,
@@ -1473,7 +1544,7 @@ async def gitlab_cancel_job(
 
 @mcp.tool(
     tags={"gitlab", "jobs", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_job_log(
     ctx: Context,
@@ -1505,7 +1576,7 @@ async def gitlab_get_job_log(
 
 @mcp.tool(
     tags={"gitlab", "tags", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_tags(
     ctx: Context,
@@ -1529,14 +1600,14 @@ async def gitlab_list_tags(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_tags(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "tags", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_tag(
     ctx: Context,
@@ -1551,7 +1622,10 @@ async def gitlab_get_tag(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "tags", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "tags", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_tag(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1573,7 +1647,7 @@ async def gitlab_create_tag(
 
 @mcp.tool(
     tags={"gitlab", "tags", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_tag(
     ctx: Context,
@@ -1596,7 +1670,7 @@ async def gitlab_delete_tag(
 
 @mcp.tool(
     tags={"gitlab", "releases", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_releases(
     ctx: Context,
@@ -1611,14 +1685,14 @@ async def gitlab_list_releases(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_releases(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "releases", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_release(
     ctx: Context,
@@ -1633,7 +1707,10 @@ async def gitlab_get_release(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "releases", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "releases", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_release(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1669,7 +1746,7 @@ async def gitlab_create_release(
 
 @mcp.tool(
     tags={"gitlab", "releases", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_release(
     ctx: Context,
@@ -1697,7 +1774,7 @@ async def gitlab_update_release(
 
 @mcp.tool(
     tags={"gitlab", "releases", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_release(
     ctx: Context,
@@ -1720,7 +1797,7 @@ async def gitlab_delete_release(
 
 @mcp.tool(
     tags={"gitlab", "variables", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_variables(
     ctx: Context,
@@ -1732,12 +1809,15 @@ async def gitlab_list_variables(
         for var in data:
             if var.get("masked"):
                 var["value"] = "***MASKED***"
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "variables", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "variables", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_variable(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -1778,7 +1858,7 @@ async def gitlab_create_variable(
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_variable(
     ctx: Context,
@@ -1816,7 +1896,7 @@ async def gitlab_update_variable(
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_variable(
     ctx: Context,
@@ -1840,7 +1920,7 @@ async def gitlab_delete_variable(
 
 @mcp.tool(
     tags={"gitlab", "variables", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_group_variables(
     ctx: Context,
@@ -1852,12 +1932,15 @@ async def gitlab_list_group_variables(
         for var in data:
             if var.get("masked"):
                 var["value"] = "***MASKED***"
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "variables", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "variables", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_group_variable(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID or path", min_length=1)],
@@ -1894,7 +1977,7 @@ async def gitlab_create_group_variable(
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_group_variable(
     ctx: Context,
@@ -1929,7 +2012,7 @@ async def gitlab_update_group_variable(
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
-    annotations={"destructiveHint": True, "readOnlyHint": False},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
 async def gitlab_delete_group_variable(
     ctx: Context,
@@ -1952,7 +2035,7 @@ async def gitlab_delete_group_variable(
 
 @mcp.tool(
     tags={"gitlab", "issues", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_list_issues(
     ctx: Context,
@@ -1979,14 +2062,14 @@ async def gitlab_list_issues(
         if per_page:
             params["per_page"] = per_page
         data = await _get_client(ctx).list_issues(project_id, params or None)
-        return _ok(data)
+        return _paginated(data)
     except Exception as e:
         return _err(e)
 
 
 @mcp.tool(
     tags={"gitlab", "issues", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_get_issue(
     ctx: Context,
@@ -2001,7 +2084,10 @@ async def gitlab_get_issue(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "issues", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "issues", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_create_issue(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
@@ -2037,7 +2123,7 @@ async def gitlab_create_issue(
 
 @mcp.tool(
     tags={"gitlab", "issues", "write"},
-    annotations={"readOnlyHint": False, "idempotentHint": True},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
 async def gitlab_update_issue(
     ctx: Context,
@@ -2072,7 +2158,10 @@ async def gitlab_update_issue(
         return _err(e)
 
 
-@mcp.tool(tags={"gitlab", "issues", "write"}, annotations={"readOnlyHint": False})
+@mcp.tool(
+    tags={"gitlab", "issues", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
 async def gitlab_add_issue_comment(
     ctx: Context,
     project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],

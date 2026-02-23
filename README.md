@@ -247,6 +247,112 @@ uv pip install mcp-gitlab
 
 </details>
 
+## Resources (6)
+
+The server exposes curated workflow guides as [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) that clients can read on demand.
+
+| URI | Name |
+|-----|------|
+| `resource://rules/gitlab-ci` | GitLab CI/CD Pipeline Patterns |
+| `resource://rules/git-workflow` | Git Workflow Standards |
+| `resource://rules/mr-hygiene` | Merge Request Best Practices |
+| `resource://rules/conventional-commits` | Conventional Commits Spec |
+| `resource://guides/code-review` | Code Review Standards |
+| `resource://guides/codeowners` | GitLab CODEOWNERS Reference |
+
+## Usage Examples
+
+### Projects & Branches
+
+```
+"Get details for project my-org/api-gateway"
+→ gitlab_get_project(project_id="my-org/api-gateway")
+
+"Create a feature branch from main"
+→ gitlab_create_branch(project_id="123", branch_name="feat/login", ref="main")
+
+"Delete all branches merged into main"
+→ gitlab_list_branches(project_id="123") → filter merged → gitlab_delete_branch for each
+```
+
+### Merge Requests & Code Review
+
+```
+"Open a merge request from feat/login to main"
+→ gitlab_create_mr(project_id="123", source_branch="feat/login", target_branch="main", title="Add login")
+
+"Review MR !42 — list changes and add inline comments"
+→ gitlab_mr_changes(project_id="123", mr_iid=42)
+→ gitlab_create_mr_discussion(project_id="123", mr_iid=42, body="nit: ...", new_path="src/auth.py", new_line=15)
+
+"Merge MR !42 after resolving all threads"
+→ gitlab_list_mr_discussions(project_id="123", mr_iid=42) → resolve unresolved
+→ gitlab_merge_mr(project_id="123", mr_iid=42, squash=True)
+```
+
+### Pipelines & CI/CD
+
+```
+"Show failed pipelines on main this week"
+→ gitlab_list_pipelines(project_id="123", ref="main", status="failed")
+
+"Retry a failed pipeline"
+→ gitlab_retry_pipeline(project_id="123", pipeline_id=456)
+
+"Get the build log for job 789"
+→ gitlab_get_job_log(project_id="123", job_id=789, tail_lines=100)
+```
+
+### Issues
+
+```
+"Create a bug report in project 123"
+→ gitlab_create_issue(project_id="123", title="Login page 500 error", labels=["bug","P1"])
+
+"Find open issues assigned to me"
+→ gitlab_list_issues(project_id="123", state="opened", assignee_username="johndoe")
+```
+
+## Security Considerations
+
+- **Token scope**: Use the minimum required scope. `api` scope grants full access; prefer `read_api` for read-only deployments.
+- **Read-only mode**: Set `GITLAB_READ_ONLY=true` to disable all write operations (create, update, delete, merge). Read-only mode is enforced server-side before any API call.
+- **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
+- **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
+- **No credential storage**: The server does not persist tokens. Credentials are read from environment variables at startup.
+
+## Rate Limits & Permissions
+
+### Rate Limits
+
+GitLab enforces per-user rate limits (default: 2000 requests/minute for authenticated users). When rate-limited, tools return a 429 error with a hint to wait before retrying. Paginated endpoints default to 20 results per page; use `per_page` (max 100) to reduce the number of API calls.
+
+### Required Permissions
+
+| Operation | Minimum GitLab Role |
+|-----------|-------------------|
+| Read projects, MRs, pipelines, issues | Reporter |
+| Create branches, MRs, issues | Developer |
+| Merge MRs, manage CI/CD variables | Maintainer |
+| Delete projects, manage approval rules | Maintainer/Owner |
+| Share projects/groups | Owner (or Admin) |
+
+## CLI & Transport Options
+
+```bash
+# Default: stdio transport (for MCP clients)
+uvx mcp-gitlab
+
+# HTTP transport (SSE or streamable-http)
+uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
+uvx mcp-gitlab --transport streamable-http --port 9000
+
+# CLI overrides for config
+uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
+```
+
+The server loads `.env` files from the working directory automatically via `python-dotenv`.
+
 ## Development
 
 ```bash

@@ -160,8 +160,8 @@ class TestBranches:
         )
         result = await client.call_tool("gitlab_list_branches", {"project_id": "123"})
         parsed = _parse(result)
-        assert len(parsed) == 2
-        assert parsed[0]["name"] == "main"
+        assert parsed["count"] == 2
+        assert parsed["items"][0]["name"] == "main"
 
     async def test_create_branch(self, tool_client):
         client, router = tool_client
@@ -189,8 +189,8 @@ class TestMergeRequests:
         )
         result = await client.call_tool("gitlab_list_mrs", {"project_id": "123"})
         parsed = _parse(result)
-        assert len(parsed) == 1
-        assert parsed[0]["iid"] == 1
+        assert parsed["count"] == 1
+        assert parsed["items"][0]["iid"] == 1
 
     async def test_get_mr(self, tool_client):
         client, router = tool_client
@@ -245,8 +245,8 @@ class TestPipelines:
         )
         result = await client.call_tool("gitlab_list_pipelines", {"project_id": "123"})
         parsed = _parse(result)
-        assert len(parsed) == 1
-        assert parsed[0]["status"] == "success"
+        assert parsed["count"] == 1
+        assert parsed["items"][0]["status"] == "success"
 
     async def test_get_pipeline_with_jobs(self, tool_client):
         client, router = tool_client
@@ -289,7 +289,7 @@ class TestIssues:
         )
         result = await client.call_tool("gitlab_list_issues", {"project_id": "123"})
         parsed = _parse(result)
-        assert len(parsed) == 1
+        assert parsed["count"] == 1
 
 
 # ═══════════════════════════════════════════════════════
@@ -360,5 +360,5 @@ class TestVariables:
         )
         result = await client.call_tool("gitlab_list_variables", {"project_id": "123"})
         parsed = _parse(result)
-        assert parsed[0]["value"] == "***MASKED***"
-        assert parsed[1]["value"] == "hello"
+        assert parsed["items"][0]["value"] == "***MASKED***"
+        assert parsed["items"][1]["value"] == "hello"

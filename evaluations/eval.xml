@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Evaluation suite for mcp-gitlab MCP server.
+  10 read-only questions testing tool composition and multi-step reasoning.
+  Replace placeholder project IDs with real values from your GitLab instance.
+-->
+<evaluation>
+  <qa_pair id="1">
+    <question>What is the name and default branch of project 123?</question>
+    <expected_tools>gitlab_get_project</expected_tools>
+    <answer_contains>name, default_branch</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="2">
+    <question>List all branches in project 123 that contain "feat" in the name.</question>
+    <expected_tools>gitlab_list_branches</expected_tools>
+    <answer_contains>items, count</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="3">
+    <question>Show me the last 5 commits on the main branch of project 123.</question>
+    <expected_tools>gitlab_list_commits</expected_tools>
+    <answer_contains>items, count</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="4">
+    <question>Find all open merge requests in project 123 and tell me how many there are.</question>
+    <expected_tools>gitlab_list_mrs</expected_tools>
+    <answer_contains>items, count</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="5">
+    <question>Get MR !42 in project 123 and list the files it changes.</question>
+    <expected_tools>gitlab_get_mr, gitlab_mr_changes</expected_tools>
+    <answer_contains>source_branch, target_branch, changes</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="6">
+    <question>Show me the latest pipeline on main for project 123, including its jobs and their statuses.</question>
+    <expected_tools>gitlab_list_pipelines, gitlab_get_pipeline</expected_tools>
+    <answer_contains>status, jobs</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="7">
+    <question>List all tags in project 123 and find the most recent release.</question>
+    <expected_tools>gitlab_list_tags, gitlab_list_releases</expected_tools>
+    <answer_contains>items</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="8">
+    <question>What approval rules are configured for project 123? How many approvals are required?</question>
+    <expected_tools>gitlab_get_project_approvals, gitlab_list_project_approval_rules</expected_tools>
+    <answer_contains>approvals_before_merge</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="9">
+    <question>Compare the main and develop branches in project 123. How many commits differ?</question>
+    <expected_tools>gitlab_compare</expected_tools>
+    <answer_contains>commits, diffs</answer_contains>
+  </qa_pair>
+
+  <qa_pair id="10">
+    <question>List all unresolved discussions on MR !42 in project 123.</question>
+    <expected_tools>gitlab_list_mr_discussions</expected_tools>
+    <answer_contains>items</answer_contains>
+  </qa_pair>
+</evaluation>
