@@ -37,6 +37,7 @@ def main(
     if read_only:
         os.environ["GITLAB_READ_ONLY"] = "true"
 
+    from .servers import resources  # noqa: F401 — registers @mcp.resource decorators
     from .servers.gitlab import mcp
 
     run_kwargs: dict = {"transport": transport}
