@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1] - 2026-02-24
+
+### Bug Fixes
+- fix: disable FastMCP startup banner (#24) (e6f1d47)
+
+
 ## [0.6.0] - 2026-02-24
 
 ### Features
