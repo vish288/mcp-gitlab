@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/vish288/mcp-gitlab/actions/workflows/tests.yml/badge.svg)](https://github.com/vish288/mcp-gitlab/actions/workflows/tests.yml)
 
-**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **76 tools** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **76 tools**, **6 resources**, and **5 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
 Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
 
@@ -259,6 +259,18 @@ The server exposes curated workflow guides as [MCP resources](https://modelconte
 | `resource://rules/conventional-commits` | Conventional Commits Spec |
 | `resource://guides/code-review` | Code Review Standards |
 | `resource://guides/codeowners` | GitLab CODEOWNERS Reference |
+
+## Prompts (5)
+
+The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts) — reusable multi-tool workflow templates that clients can surface as slash commands.
+
+| Prompt | Parameters | Workflow |
+|--------|-----------|----------|
+| `review_mr` | `project_id`, `mr_iid` | Fetch MR → check pipeline → review changes → write discussion notes |
+| `diagnose_pipeline` | `project_id`, `pipeline_id` | Fetch pipeline → identify failed jobs → get logs → suggest fix |
+| `prepare_release` | `project_id`, `tag_name`, `ref` | Compare commits since last tag → draft changelog → create tag + release |
+| `setup_branch_protection` | `project_id` | Review settings → configure merge method → set approval rules |
+| `triage_issues` | `project_id`, `label` | List open issues → categorize → prioritize → identify duplicates |
 
 ## Usage Examples
 
