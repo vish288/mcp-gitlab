@@ -258,14 +258,14 @@ These accept any of the following token types:
 
 The server exposes curated workflow guides as [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) that clients can read on demand.
 
-| URI | Name |
-|-----|------|
-| `resource://rules/gitlab-ci` | GitLab CI/CD Pipeline Patterns |
-| `resource://rules/git-workflow` | Git Workflow Standards |
-| `resource://rules/mr-hygiene` | Merge Request Best Practices |
-| `resource://rules/conventional-commits` | Conventional Commits Spec |
-| `resource://guides/code-review` | Code Review Standards |
-| `resource://guides/codeowners` | GitLab CODEOWNERS Reference |
+| URI | Name | Description |
+|-----|------|-------------|
+| `resource://rules/gitlab-ci` | GitLab CI/CD Pipeline Patterns | Stage design, job rules, caching, artifacts, `needs` DAG, multi-project pipelines |
+| `resource://rules/git-workflow` | Git Workflow Standards | Branch naming, trunk-based flow, merge vs rebase, protected branches |
+| `resource://rules/mr-hygiene` | Merge Request Best Practices | MR size, description templates, review checklists, thread resolution |
+| `resource://rules/conventional-commits` | Conventional Commits Spec | Commit types, scopes, breaking changes, changelog generation |
+| `resource://guides/code-review` | Code Review Standards | Review priorities, inline comments, approval workflows, nit vs blocker |
+| `resource://guides/codeowners` | GitLab CODEOWNERS Reference | Syntax, section owners, approval rules, pattern matching |
 
 ## Prompts (5)
 
@@ -338,6 +338,7 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 - **Read-only mode**: Set `GITLAB_READ_ONLY=true` to disable all write operations (create, update, delete, merge). Read-only mode is enforced server-side before any API call.
 - **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
+- **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
 - **No credential storage**: The server does not persist tokens. Credentials are read from environment variables at startup.
 
 ## Rate Limits & Permissions
