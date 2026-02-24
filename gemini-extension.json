@@ -1,0 +1,25 @@
+{
+  "name": "mcp-gitlab",
+  "version": "0.6.3",
+  "description": "MCP server for GitLab API — projects, MRs, pipelines, CI/CD variables, approvals, and more",
+  "mcpServers": {
+    "mcp-gitlab": {
+      "command": "uvx",
+      "args": ["mcp-gitlab"]
+    }
+  },
+  "settings": [
+    {
+      "name": "GITLAB_URL",
+      "description": "GitLab instance URL (e.g., https://gitlab.com)",
+      "required": true,
+      "sensitive": false
+    },
+    {
+      "name": "GITLAB_TOKEN",
+      "description": "GitLab personal access token",
+      "required": true,
+      "sensitive": true
+    }
+  ]
+}
