@@ -45,7 +45,7 @@ def main(
         run_kwargs["host"] = host
         run_kwargs["port"] = port
 
-    asyncio.run(mcp.run_async(**run_kwargs))
+    asyncio.run(mcp.run_async(show_banner=False, **run_kwargs))
 
 
 if __name__ == "__main__":
