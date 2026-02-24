@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2] - 2026-02-24
+
+### Features
+- feat: support GITLAB_PERSONAL_ACCESS_TOKEN and GITLAB_API_TOKEN env vars (#26) (4e7a80f)
+
+### Other
+
+
 ## [0.6.1] - 2026-02-24
 
 ### Bug Fixes
