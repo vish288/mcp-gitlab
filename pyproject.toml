@@ -89,6 +89,9 @@ ignore = []
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
+[tool.coverage.run]
+omit = ["src/mcp_gitlab/__init__.py", "src/mcp_gitlab/__main__.py"]
+
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
