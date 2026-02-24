@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.3] - 2026-02-24
+
+### Documentation
+- docs: sync README structure across MCP repos (#27) (9088736)
+
+
 ## [0.6.2] - 2026-02-24
 
 ### Features
