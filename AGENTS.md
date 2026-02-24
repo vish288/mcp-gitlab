@@ -8,6 +8,7 @@ MCP server providing 76 tools for the GitLab REST API v4.
 - **Client**: `src/mcp_gitlab/client.py` — async httpx client with all GitLab API methods
 - **Tools**: `src/mcp_gitlab/servers/gitlab.py` — all FastMCP tool registrations
 - **Resources**: `src/mcp_gitlab/servers/resources.py` — 6 MCP resources (workflow guides)
+- **Prompts**: `src/mcp_gitlab/servers/prompts.py` — 5 MCP prompts (multi-tool workflows)
 - **Config**: `src/mcp_gitlab/config.py` — `GitLabConfig` dataclass from env vars
 - **Exceptions**: `src/mcp_gitlab/exceptions.py` — `GitLabApiError`, `GitLabAuthError`, etc.
 - **Tests**: `tests/unit/test_tools.py` — 120+ tool-level tests via FastMCP test client
@@ -93,6 +94,16 @@ gh workflow run release.yml -f bump=minor -f dry_run=true
 - Never create tags manually — the workflow creates them
 - Commit messages must follow conventional commits (`feat:`, `fix:`, `docs:`, etc.) for changelog generation
 - The release commit is authored by `github-actions[bot]` with message `chore(release): X.Y.Z`
+
+## Prompts
+
+Prompts follow the resources pattern: prompt content lives as `.md` files in `src/mcp_gitlab/resources/prompts/`, loaded by `servers/prompts.py` via `_load_prompt()`, registered with `@mcp.prompt()`. Each prompt returns `list[Message]` with a user message (workflow template) and an assistant message (acknowledgment).
+
+- `review_mr` — MR review workflow (tags: gitlab, review)
+- `diagnose_pipeline` — CI debug workflow (tags: gitlab, ci)
+- `prepare_release` — Release preparation (tags: gitlab, release)
+- `setup_branch_protection` — Branch protection setup (tags: gitlab, settings)
+- `triage_issues` — Issue triage workflow (tags: gitlab, issues)
 
 ## Known Limitations / Future Work
 
