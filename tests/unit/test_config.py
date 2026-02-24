@@ -55,6 +55,34 @@ def test_config_validate_missing_token():
         config.validate()
 
 
+def test_config_from_env_with_personal_access_token():
+    env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-pat"}
+    with patch.dict(os.environ, env, clear=False):
+        config = GitLabConfig.from_env()
+    assert config.token == "glpat-pat"
+
+
+def test_config_from_env_with_api_token():
+    env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_API_TOKEN": "glpat-api"}
+    with patch.dict(os.environ, env, clear=False):
+        config = GitLabConfig.from_env()
+    assert config.token == "glpat-api"
+
+
+def test_config_token_priority():
+    """GITLAB_TOKEN takes precedence over all other aliases."""
+    env = {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "winner",
+        "GITLAB_PAT": "loser1",
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "loser2",
+        "GITLAB_API_TOKEN": "loser3",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        config = GitLabConfig.from_env()
+    assert config.token == "winner"
+
+
 def test_config_url_strips_trailing_slash():
     env = {"GITLAB_URL": "https://gitlab.example.com/", "GITLAB_TOKEN": "x"}
     with patch.dict(os.environ, env, clear=False):

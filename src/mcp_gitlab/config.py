@@ -19,7 +19,12 @@ class GitLabConfig:
     @classmethod
     def from_env(cls) -> GitLabConfig:
         url = os.getenv("GITLAB_URL", "").rstrip("/")
-        token = os.getenv("GITLAB_TOKEN") or os.getenv("GITLAB_PAT", "")
+        token = (
+            os.getenv("GITLAB_TOKEN")
+            or os.getenv("GITLAB_PAT")
+            or os.getenv("GITLAB_PERSONAL_ACCESS_TOKEN")
+            or os.getenv("GITLAB_API_TOKEN", "")
+        )
         read_only = os.getenv("GITLAB_READ_ONLY", "false").lower() in (
             "true",
             "1",
@@ -49,5 +54,8 @@ class GitLabConfig:
             msg = "GITLAB_URL environment variable is required"
             raise ValueError(msg)
         if not self.token:
-            msg = "GITLAB_TOKEN (or GITLAB_PAT) environment variable is required"
+            msg = (
+                "GitLab token is required. Set one of: GITLAB_TOKEN, GITLAB_PAT, "
+                "GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN"
+            )
             raise ValueError(msg)
