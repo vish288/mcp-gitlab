@@ -7,9 +7,10 @@ MCP server providing 76 tools for the GitLab REST API v4.
 - **Entry point**: `src/mcp_gitlab/__init__.py` — click CLI, loads env, runs FastMCP server
 - **Client**: `src/mcp_gitlab/client.py` — async httpx client with all GitLab API methods
 - **Tools**: `src/mcp_gitlab/servers/gitlab.py` — all FastMCP tool registrations
-- **Models**: `src/mcp_gitlab/models/` — Pydantic models for typed API responses (unused by tools)
+- **Resources**: `src/mcp_gitlab/servers/resources.py` — 6 MCP resources (workflow guides)
 - **Config**: `src/mcp_gitlab/config.py` — `GitLabConfig` dataclass from env vars
 - **Exceptions**: `src/mcp_gitlab/exceptions.py` — `GitLabApiError`, `GitLabAuthError`, etc.
+- **Tests**: `tests/unit/test_tools.py` — 120+ tool-level tests via FastMCP test client
 
 ## Patterns
 
@@ -66,9 +67,34 @@ Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Reque
 - `GITLAB_TIMEOUT` — request timeout seconds
 - `GITLAB_SSL_VERIFY` — SSL verification toggle
 
+## Release Workflow
+
+Releases are handled via GitHub Actions — never bump versions manually.
+
+### How to release
+
+```bash
+# From the repo directory:
+gh workflow run release.yml -f bump=minor      # 0.4.0 → 0.5.0
+gh workflow run release.yml -f bump=patch      # 0.5.0 → 0.5.1
+gh workflow run release.yml -f bump=major      # 0.5.0 → 1.0.0
+
+# Dry run (preview changelog, no push):
+gh workflow run release.yml -f bump=minor -f dry_run=true
+```
+
+### What happens
+
+1. `release.yml` (workflow_dispatch) — bumps `pyproject.toml` version, regenerates `uv.lock`, generates CHANGELOG.md, creates release commit + tag via GitHub API
+2. `publish.yml` (triggered by `v*` tag push) — builds wheel, publishes to PyPI, creates GitHub Release with auto-generated notes
+
+### Rules
+- Never edit `pyproject.toml` version directly — the workflow owns it
+- Never create tags manually — the workflow creates them
+- Commit messages must follow conventional commits (`feat:`, `fix:`, `docs:`, etc.) for changelog generation
+- The release commit is authored by `github-actions[bot]` with message `chore(release): X.Y.Z`
+
 ## Known Limitations / Future Work
 
 - 76 tools in one server file (exceeds 5-15 guideline). Consider splitting by category in a future refactor.
-- Pydantic models in `models/` are defined but unused — tools work with raw dicts. Consider removing or wiring up.
-- No tool-level tests. Client tests exist but the MCP registration layer (`servers/gitlab.py`) is untested.
 - Errors are returned as successful tool results with `{"error": ...}` (soft-error pattern). Callers must inspect JSON content.
