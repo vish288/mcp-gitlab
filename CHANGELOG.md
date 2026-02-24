@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0] - 2026-02-24
+
+### Features
+- feat(server): MCP Builder compliance — immediate fixes (#20) (dc58850)
+
+### Documentation
+- docs: update AGENTS.md — add release workflow, fix stale info (9e6e4ea)
+
+### Other
+
+
 ## [0.4.0] - 2026-02-23
 
 ### Other
