@@ -72,7 +72,14 @@ uv pip install mcp-gitlab
 
 ### Supported Token Types
 
-`GITLAB_TOKEN` (or `GITLAB_PAT`) accepts any of these:
+The server checks these environment variables in order — first match wins:
+
+1. `GITLAB_TOKEN`
+2. `GITLAB_PAT`
+3. `GITLAB_PERSONAL_ACCESS_TOKEN`
+4. `GITLAB_API_TOKEN`
+
+These accept any of the following token types:
 
 | Token Type | Format | Use Case |
 |------------|--------|----------|
