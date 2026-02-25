@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.6] - 2026-02-25
+
+### Bug Fixes
+- fix: update installation gateway URLs to SPA route (#33) (df8e6cb)
+
+
 ## [0.6.5] - 2026-02-25
 
 ### Chores
