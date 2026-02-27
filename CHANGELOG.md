@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.10] - 2026-02-27
+
+### Bug Fixes
+- fix: correct broken MCP Registry URLs (#37) (f170046)
+
+
 ## [0.6.9] - 2026-02-27
 
 ### Chores
