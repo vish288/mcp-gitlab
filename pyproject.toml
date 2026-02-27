@@ -23,6 +23,12 @@ keywords = [
     "devops",
     "code-review",
     "automation",
+    "cursor",
+    "vscode",
+    "windsurf",
+    "self-hosted",
+    "fastmcp",
+    "gitlab-integration",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,6 +45,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Version Control :: Git",
     "Typing :: Typed",
+    "Framework :: Pydantic :: 2",
 ]
 dependencies = [
     "fastmcp>=2.13.0",
@@ -53,6 +60,7 @@ Homepage = "https://github.com/vish288/mcp-gitlab"
 Repository = "https://github.com/vish288/mcp-gitlab"
 Issues = "https://github.com/vish288/mcp-gitlab/issues"
 Changelog = "https://github.com/vish288/mcp-gitlab/releases"
+Documentation = "https://github.com/vish288/mcp-gitlab#readme"
 
 [project.scripts]
 mcp-gitlab = "mcp_gitlab:main"

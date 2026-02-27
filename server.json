@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.vish288/mcp-gitlab",
-  "description": "MCP server for GitLab \u2014 projects, merge requests, pipelines, CI/CD, and issues.",
+  "description": "MCP server for GitLab API — 76 tools for AI assistants. Projects, MRs, pipelines, CI/CD, approvals, issues, code review.",
   "repository": {
     "url": "https://github.com/vish288/mcp-gitlab",
     "source": "github"
   },
-  "version": "0.6.6",
+  "version": "0.6.8",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-gitlab",
-      "version": "0.6.6",
+      "version": "0.6.8",
       "transport": {
         "type": "stdio"
       },
