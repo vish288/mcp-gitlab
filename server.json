@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.vish288/mcp-gitlab",
+  "description": "MCP server for GitLab \u2014 projects, merge requests, pipelines, CI/CD, and issues.",
+  "repository": {
+    "url": "https://github.com/vish288/mcp-gitlab",
+    "source": "github"
+  },
+  "version": "0.6.6",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-gitlab",
+      "version": "0.6.6",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GITLAB_TOKEN",
+          "description": "GitLab personal access token (also accepts GITLAB_PAT or GITLAB_API_TOKEN)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "GITLAB_URL",
+          "description": "GitLab instance URL (e.g. https://gitlab.com)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_READ_ONLY",
+          "description": "Restrict to read-only operations (true/false)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

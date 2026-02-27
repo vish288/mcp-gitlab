@@ -37,3 +37,25 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update server.json version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 -c "
+          import json
+          with open('server.json') as f: d = json.load(f)
+          d['version'] = '$VERSION'
+          for p in d.get('packages', []):
+              p['version'] = '$VERSION'
+          with open('server.json', 'w') as f: json.dump(d, f, indent=2); f.write('\n')
+          "
+
+      - name: Install mcp-publisher
+        run: |
+          curl -sL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz | tar xz -C /usr/local/bin mcp-publisher
+          mcp-publisher --help
+
+      - name: Publish to MCP Registry
+        run: |
+          mcp-publisher login github-oidc
+          mcp-publisher publish

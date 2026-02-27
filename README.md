@@ -5,6 +5,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-gitlab)](https://pypi.org/project/mcp-gitlab/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/vish288/mcp-gitlab/actions/workflows/tests.yml/badge.svg)](https://github.com/vish288/mcp-gitlab/actions/workflows/tests.yml)
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/servers/io.github.vish288/mcp-gitlab)
+
+<!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
 **mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **76 tools**, **6 resources**, and **5 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
