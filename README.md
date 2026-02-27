@@ -11,7 +11,11 @@
 
 **mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **76 tools**, **6 resources**, and **5 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
+Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
+
 Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
+
+**Install:** `uvx mcp-gitlab` | [PyPI](https://pypi.org/project/mcp-gitlab/) | [MCP Registry](https://registry.modelcontextprotocol.io/servers/io.github.vish288/mcp-gitlab) | [Changelog](https://github.com/vish288/mcp-gitlab/releases)
 
 ## 1-Click Installation
 
@@ -19,7 +23,7 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-install?server=mcp-gitlab&install=vscode) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-install?server=mcp-gitlab&install=vscode-insiders)
 
-> **💡 Tip:** For other AI assistants (Claude Code, Windsurf, IntelliJ), visit the **[GitLab MCP Installation Gateway](https://vish288.github.io/mcp-install?server=mcp-gitlab)**.
+> **💡 Tip:** For other AI assistants (Claude Code, Windsurf, IntelliJ, Gemini CLI), visit the **[GitLab MCP Installation Gateway](https://vish288.github.io/mcp-install?server=mcp-gitlab)**.
 
 <details>
 <summary><b>Manual Setup Guides (Click to expand)</b></summary>
@@ -53,6 +57,12 @@ claude mcp add gitlab -- uvx mcp-gitlab
     }
   }
 }
+```
+
+### Gemini CLI
+
+```bash
+gemini mcp add -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
 ```
 
 ### pip / uv
@@ -375,6 +385,11 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 ```
 
 The server loads `.env` files from the working directory automatically via `python-dotenv`.
+
+## Related MCP Servers
+
+- [mcp-atlassian-extended](https://github.com/vish288/mcp-atlassian-extended) — Jira + Confluence integration (23 tools, 15 resources, 5 prompts)
+- [mcp-coda](https://github.com/vish288/mcp-coda) — Coda.io integration (54 tools, 12 resources, 5 prompts)
 
 ## Development
 
