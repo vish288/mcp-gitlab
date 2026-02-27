@@ -23,7 +23,7 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.pyt
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-install?server=mcp-gitlab&install=vscode) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vish288.github.io/mcp-install?server=mcp-gitlab&install=vscode-insiders)
 
-> **💡 Tip:** For other AI assistants (Claude Code, Windsurf, IntelliJ), visit the **[GitLab MCP Installation Gateway](https://vish288.github.io/mcp-install?server=mcp-gitlab)**.
+> **💡 Tip:** For other AI assistants (Claude Code, Windsurf, IntelliJ, Gemini CLI), visit the **[GitLab MCP Installation Gateway](https://vish288.github.io/mcp-install?server=mcp-gitlab)**.
 
 <details>
 <summary><b>Manual Setup Guides (Click to expand)</b></summary>
@@ -57,6 +57,12 @@ claude mcp add gitlab -- uvx mcp-gitlab
     }
   }
 }
+```
+
+### Gemini CLI
+
+```bash
+gemini mcp add -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
 ```
 
 ### pip / uv
