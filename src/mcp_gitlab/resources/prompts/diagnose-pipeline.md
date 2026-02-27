@@ -1,8 +1,8 @@
-# Diagnose pipeline {pipeline_id} in project {project_id}
+# Diagnose pipeline $pipeline_id in project $project_id
 
 ## Steps
 
-1. **Fetch pipeline details** — use `gitlab_get_pipeline` with project_id="{project_id}" and pipeline_id="{pipeline_id}". Note the status, ref, and created timestamp.
+1. **Fetch pipeline details** — use `gitlab_get_pipeline` with project_id="$project_id" and pipeline_id="$pipeline_id". Note the status, ref, and created timestamp.
 2. **Identify failed jobs** — from the pipeline response, find jobs with status "failed". List each failed job with its name, stage, and runner.
 3. **Get job logs** — for each failed job, use `gitlab_get_job_log` to retrieve the trace output. Focus on the last 100 lines where errors typically appear.
 4. **Analyze errors** — for each failed job log, identify:

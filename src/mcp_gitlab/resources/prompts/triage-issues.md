@@ -1,11 +1,11 @@
-# Triage issues in project {project_id}
+# Triage issues in project $project_id
 
 ## Parameters
-- **Label filter**: {label}
+- **Label filter**: $label
 
 ## Steps
 
-1. **List open issues** — use `gitlab_list_issues` with project_id="{project_id}", state="opened", and labels="{label}" (if provided). Retrieve up to 100 issues.
+1. **List open issues** — use `gitlab_list_issues` with project_id="$project_id", state="opened", and labels="$label" (if provided). Retrieve up to 100 issues.
 2. **Categorize** — group issues by:
    - **Bug reports**: issues with "bug" label or bug-related keywords
    - **Feature requests**: issues with "feature" or "enhancement" labels

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from mcp_gitlab.servers.resources import (
     _RESOURCES_DIR,
     _load,
@@ -60,11 +62,11 @@ class TestResourceFiles:
     """Verify resource .md files exist and are valid."""
 
     def test_resources_dir_exists(self) -> None:
-        assert _RESOURCES_DIR.is_dir(), f"Resources directory missing: {_RESOURCES_DIR}"
+        assert Path(_RESOURCES_DIR).is_dir(), f"Resources directory missing: {_RESOURCES_DIR}"
 
     def test_all_files_exist(self) -> None:
         for filename in RESOURCE_FILES:
-            path = _RESOURCES_DIR / filename
+            path = Path(_RESOURCES_DIR) / filename
             assert path.is_file(), f"Missing resource file: {path}"
 
     def test_load_returns_content(self) -> None:
@@ -92,25 +94,25 @@ class TestLoadSecurity:
     def test_rejects_directory_traversal(self) -> None:
         import pytest
 
-        with pytest.raises(ValueError, match="Invalid resource filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load("../../../etc/passwd")
 
     def test_rejects_forward_slash(self) -> None:
         import pytest
 
-        with pytest.raises(ValueError, match="Invalid resource filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load("subdir/file.md")
 
     def test_rejects_backslash(self) -> None:
         import pytest
 
-        with pytest.raises(ValueError, match="Invalid resource filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load("subdir\\file.md")
 
     def test_rejects_dotdot_only(self) -> None:
         import pytest
 
-        with pytest.raises(ValueError, match="Invalid resource filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load("..")
 
 

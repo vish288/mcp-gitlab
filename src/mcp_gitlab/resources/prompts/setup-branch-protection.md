@@ -1,8 +1,8 @@
-# Set up branch protection for project {project_id}
+# Set up branch protection for project $project_id
 
 ## Steps
 
-1. **Review current settings** — use `gitlab_get_project` with project_id="{project_id}" to check the current merge method, approval settings, and default branch.
+1. **Review current settings** — use `gitlab_get_project` with project_id="$project_id" to check the current merge method, approval settings, and default branch.
 2. **Check existing approvals** — use `gitlab_get_project_approvals` to see current approval rules and required approval count.
 3. **Configure merge method** — use `gitlab_update_project_merge_settings` to set:
    - Merge method (merge commit, rebase, fast-forward)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from mcp_gitlab.servers.prompts import (
@@ -49,11 +51,11 @@ class TestPromptFiles:
     """Verify prompt .md files exist and are valid."""
 
     def test_prompts_dir_exists(self) -> None:
-        assert _PROMPTS_DIR.is_dir(), f"Prompts directory missing: {_PROMPTS_DIR}"
+        assert Path(_PROMPTS_DIR).is_dir(), f"Prompts directory missing: {_PROMPTS_DIR}"
 
     def test_all_files_exist(self) -> None:
         for filename in PROMPT_FILES:
-            path = _PROMPTS_DIR / filename
+            path = Path(_PROMPTS_DIR) / filename
             assert path.is_file(), f"Missing prompt file: {path}"
 
     def test_load_returns_content(self) -> None:
@@ -79,19 +81,19 @@ class TestLoadPromptSecurity:
     """Verify _load_prompt() rejects path traversal attempts."""
 
     def test_rejects_directory_traversal(self) -> None:
-        with pytest.raises(ValueError, match="Invalid prompt filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load_prompt("../../../etc/passwd")
 
     def test_rejects_forward_slash(self) -> None:
-        with pytest.raises(ValueError, match="Invalid prompt filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load_prompt("subdir/file.md")
 
     def test_rejects_backslash(self) -> None:
-        with pytest.raises(ValueError, match="Invalid prompt filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load_prompt("subdir\\file.md")
 
     def test_rejects_dotdot_only(self) -> None:
-        with pytest.raises(ValueError, match="Invalid prompt filename"):
+        with pytest.raises(ValueError, match="Invalid filename"):
             _load_prompt("..")
 
 
@@ -136,6 +138,49 @@ class TestPromptRegistration:
         for name, info in EXPECTED_PROMPTS.items():
             fn = info["fn"]
             assert hasattr(fn, "__fastmcp__"), f"{name} function missing __fastmcp__ metadata"
+
+    def test_curly_braces_in_args_do_not_crash(self) -> None:
+        """Values containing curly braces must not raise KeyError."""
+        result = review_mr(project_id="123", mr_iid='{"nested": "json"}')
+        assert '{"nested": "json"}' in result[0].content.text
+
+
+class TestURLParsing:
+    """Verify prompts accept full GitLab URLs and extract IDs."""
+
+    def test_review_mr_from_url(self) -> None:
+        result = review_mr(
+            project_id="https://gitlab.example.com/my-group/my-project/-/merge_requests/42"
+        )
+        assert "my-group/my-project" in result[0].content.text
+        assert "42" in result[0].content.text
+        assert "42" in result[1].content.text
+
+    def test_diagnose_pipeline_from_url(self) -> None:
+        result = diagnose_pipeline(project_id="https://gitlab.example.com/ns/proj/-/pipelines/999")
+        assert "ns/proj" in result[0].content.text
+        assert "999" in result[0].content.text
+
+    def test_prepare_release_from_project_url(self) -> None:
+        result = prepare_release(
+            project_id="https://gitlab.example.com/group/project",
+            tag_name="v1.0.0",
+        )
+        assert "group/project" in result[0].content.text
+        assert "v1.0.0" in result[0].content.text
+
+    def test_setup_branch_protection_from_url(self) -> None:
+        result = setup_branch_protection(project_id="https://gitlab.example.com/org/repo")
+        assert "org/repo" in result[0].content.text
+
+    def test_triage_issues_from_url(self) -> None:
+        result = triage_issues(project_id="https://gitlab.example.com/team/app", label="bug")
+        assert "team/app" in result[0].content.text
+
+    def test_plain_ids_still_work(self) -> None:
+        result = review_mr(project_id="123", mr_iid="42")
+        assert "123" in result[0].content.text
+        assert "42" in result[0].content.text
 
 
 class TestPromptRendering:
