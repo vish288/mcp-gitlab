@@ -1,0 +1,425 @@
+# mcp-gitlab
+
+> MCP server for the GitLab REST API — 76 tools, 6 resources, and 5 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
+
+MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
+
+- **Install**: `uvx mcp-gitlab`
+- **Version**: 0.6.9
+- **Python**: >=3.10
+- **License**: MIT
+- **Transport**: stdio (default), SSE, streamable-http
+- **Registry**: `io.github.vish288/mcp-gitlab`
+- **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
+- **Optional env vars**: `GITLAB_READ_ONLY` (disable writes), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification)
+
+## Documentation
+
+- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 76 tools, 6 resources, 5 prompts
+- [PyPI](https://pypi.org/project/mcp-gitlab/): install via `pip install mcp-gitlab` or `uvx mcp-gitlab`
+- [GitHub](https://github.com/vish288/mcp-gitlab): source code, issue tracker, development setup
+- [MCP Registry](https://registry.modelcontextprotocol.io): discover and install MCP servers
+
+## Optional
+
+- [Changelog](https://github.com/vish288/mcp-gitlab/releases): per-version release notes with breaking changes
+- [MCP Specification](https://modelcontextprotocol.io/docs): protocol spec for tools, resources, and prompts
+- [FastMCP](https://github.com/jlowin/fastmcp): Python framework this server is built on
+
+## Configuration
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITLAB_URL` | Yes | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
+| `GITLAB_TOKEN` | Yes | - | Authentication token (`glpat-xxx` personal access token, OAuth2 token, or CI job token) |
+| `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
+| `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
+| `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
+
+Token environment variables are checked in order: `GITLAB_TOKEN`, `GITLAB_PAT`, `GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN`. First match wins.
+
+### CLI Options
+
+```bash
+# Default: stdio transport (for MCP clients)
+uvx mcp-gitlab
+
+# HTTP transport (SSE or streamable-http)
+uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
+uvx mcp-gitlab --transport streamable-http --port 9000
+
+# CLI overrides for config
+uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
+```
+
+### MCP Client Configuration Example
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "uvx",
+      "args": ["mcp-gitlab"],
+      "env": {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+## Required Permissions
+
+| Operation | Minimum GitLab Role |
+|-----------|-------------------|
+| Read projects, MRs, pipelines, issues | Reporter |
+| Create branches, MRs, issues | Developer |
+| Merge MRs, manage CI/CD variables | Maintainer |
+| Delete projects, manage approval rules | Maintainer/Owner |
+| Share projects/groups | Owner (or Admin) |
+
+## Tools (76)
+
+### Projects (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_get_project` | Get details of a GitLab project |
+| `gitlab_create_project` | Create a new GitLab project |
+| `gitlab_delete_project` | Delete a GitLab project (irreversible) |
+| `gitlab_update_project_merge_settings` | Update merge settings for a project |
+
+### Project Approvals (10)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_get_project_approvals` | Get project-level approval configuration |
+| `gitlab_update_project_approvals` | Update project-level approval settings |
+| `gitlab_list_project_approval_rules` | List project-level approval rules |
+| `gitlab_create_project_approval_rule` | Create a project-level approval rule |
+| `gitlab_update_project_approval_rule` | Update a project-level approval rule |
+| `gitlab_delete_project_approval_rule` | Delete a project-level approval rule |
+| `gitlab_list_mr_approval_rules` | List merge request approval rules |
+| `gitlab_create_mr_approval_rule` | Create a merge request approval rule |
+| `gitlab_update_mr_approval_rule` | Update a merge request approval rule |
+| `gitlab_delete_mr_approval_rule` | Delete a merge request approval rule |
+
+### Groups (6)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_groups` | List GitLab groups |
+| `gitlab_get_group` | Get details of a GitLab group |
+| `gitlab_share_project_with_group` | Share a project with a group |
+| `gitlab_unshare_project_with_group` | Remove group sharing from a project |
+| `gitlab_share_group_with_group` | Share a group with another group |
+| `gitlab_unshare_group_with_group` | Remove group sharing between groups |
+
+### Branches (3)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_branches` | List repository branches |
+| `gitlab_create_branch` | Create a new branch |
+| `gitlab_delete_branch` | Delete a branch |
+
+### Commits (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_commits` | List repository commits |
+| `gitlab_get_commit` | Get a specific commit, optionally with diff |
+| `gitlab_create_commit` | Create a commit with multiple file actions |
+| `gitlab_compare` | Compare two branches, tags, or commits |
+
+### Merge Requests (8)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_mrs` | List merge requests for a project |
+| `gitlab_get_mr` | Get merge request details |
+| `gitlab_create_mr` | Create a new merge request |
+| `gitlab_update_mr` | Update a merge request |
+| `gitlab_merge_mr` | Merge a merge request |
+| `gitlab_merge_mr_sequence` | Merge multiple MRs in sequence (stops on first failure) |
+| `gitlab_rebase_mr` | Rebase a merge request |
+| `gitlab_mr_changes` | Get file changes of a merge request (diffs with old/new paths and content) |
+
+### MR Notes (6)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_mr_notes` | List notes (comments) on a merge request |
+| `gitlab_add_mr_note` | Add a note (comment) to a merge request |
+| `gitlab_delete_mr_note` | Delete a note from a merge request |
+| `gitlab_update_mr_note` | Update a note on a merge request |
+| `gitlab_award_emoji` | Award an emoji reaction to a note |
+| `gitlab_remove_emoji` | Remove an emoji reaction from a note |
+
+### MR Discussions (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_mr_discussions` | List discussions on a merge request |
+| `gitlab_create_mr_discussion` | Create a discussion on a merge request (supports inline and multi-line comments) |
+| `gitlab_reply_to_discussion` | Reply to an existing discussion |
+| `gitlab_resolve_discussion` | Resolve or unresolve a discussion |
+
+### Pipelines (5)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_pipelines` | List pipelines for a project (id, status, ref, source, created_at) |
+| `gitlab_get_pipeline` | Get pipeline details, optionally with jobs |
+| `gitlab_create_pipeline` | Create (trigger) a new pipeline |
+| `gitlab_retry_pipeline` | Retry all failed jobs in a pipeline |
+| `gitlab_cancel_pipeline` | Cancel a running pipeline |
+
+### Jobs (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_retry_job` | Retry a failed job |
+| `gitlab_play_job` | Trigger a manual job |
+| `gitlab_cancel_job` | Cancel a running job |
+| `gitlab_get_job_log` | Get the log (trace) output of a job |
+
+### Tags (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_tags` | List repository tags |
+| `gitlab_get_tag` | Get details of a specific tag |
+| `gitlab_create_tag` | Create a new tag |
+| `gitlab_delete_tag` | Delete a tag |
+
+### Releases (5)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_releases` | List project releases |
+| `gitlab_get_release` | Get details of a specific release |
+| `gitlab_create_release` | Create a new release |
+| `gitlab_update_release` | Update an existing release |
+| `gitlab_delete_release` | Delete a release (does not delete the tag) |
+
+### CI/CD Variables (8)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_variables` | List project CI/CD variables (masked values shown as `***MASKED***`) |
+| `gitlab_create_variable` | Create a project CI/CD variable |
+| `gitlab_update_variable` | Update a project CI/CD variable |
+| `gitlab_delete_variable` | Delete a project CI/CD variable |
+| `gitlab_list_group_variables` | List group CI/CD variables (masked values shown as `***MASKED***`) |
+| `gitlab_create_group_variable` | Create a group CI/CD variable |
+| `gitlab_update_group_variable` | Update a group CI/CD variable |
+| `gitlab_delete_group_variable` | Delete a group CI/CD variable |
+
+### Issues (5)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_list_issues` | List issues for a project |
+| `gitlab_get_issue` | Get details of a specific issue |
+| `gitlab_create_issue` | Create a new issue |
+| `gitlab_update_issue` | Update an existing issue |
+| `gitlab_add_issue_comment` | Add a comment to an issue |
+
+## Resources (6)
+
+The server exposes curated workflow guides as MCP resources that clients can read on demand.
+
+### resource://rules/gitlab-ci — GitLab CI/CD Pipeline Patterns
+
+Workflow rules, DAG with needs, caching, artifact expiry, secrets, environment tracking, and anti-patterns for .gitlab-ci.yml.
+
+**Content:**
+
+- Always define `workflow: rules` at the top level to prevent duplicate pipelines
+- Use `rules:` instead of deprecated `only:`/`except:` (deprecated since GitLab 12.3)
+- `when: manual` inside `rules:` defaults `allow_failure: false` (blocks pipeline); at top-level job defaults `allow_failure: true`
+- Use `needs:` for DAG-based parallelism (max 50 entries per job)
+- Notify-slack pattern: `notify-slack` needs `[prod:apply]`; `notify-slack-manual` needs `[]`
+- `NOTIFY_ONLY` guard: all non-notify jobs must have `$NOTIFY_ONLY == "true" → when: never` as first rule
+- Cache scoped by branch with `fallback_keys` and `policy: pull-push`
+- Always set `expire_in` on artifacts
+- Use `extends:` and `!reference []` for DRY templates
+- Never use `[skip ci]` — it blocks ALL pipelines including tag pipelines; use workflow rules instead
+- Set `interruptible: true` on non-deploy jobs
+- Store secrets as masked + protected CI/CD variables, never in YAML
+- Debugging: `CI_DEBUG_TRACE=true`, check for exit code 137 (OOM), exit code 1 on `npm ci` (stale lockfile)
+
+### resource://rules/git-workflow — Git Workflow Standards
+
+Trunk-based development, branch naming, rebase discipline, safe force-push, feature flags, and merge strategy.
+
+**Content:**
+
+- `main` is always releasable; feature branches are short-lived (2-3 days max)
+- Branch naming: `type/TICKET-description` (feat, fix, chore, docs, refactor, test, ci)
+- Always rebase on `main` before merging; never `git merge main` on a feature branch
+- Use `--force-with-lease` for force pushes; never `--force`
+- Gate incomplete work behind feature flags
+- Merge strategy: rebase-merge when each commit is meaningful; squash-merge for noisy WIP commits
+- Enable automatic branch deletion on merge
+- Rebase conflict recovery via `git reflog`
+
+### resource://rules/mr-hygiene — Merge Request Best Practices
+
+MR size limits, description template, author/reviewer responsibilities, thread resolution, approval rules, and merge readiness.
+
+**Content:**
+
+- Self-review diff before opening; keep under 400 lines changed
+- CI must be green before requesting review
+- Title: imperative mood, sentence case, max 72 chars, include ticket reference
+- Description template: Summary (2-5 bullets), Test plan (checklist), References
+- Use stacked MRs for features exceeding 400 lines (data layer, logic, UI)
+- All threads must be resolved before merge — no exceptions
+- Always rebase immediately before merging
+- Merge checklist: threads resolved, CI green, approvals obtained, no Draft status, source branch deleted, ticket updated
+- Unresponsive reviewer escalation: 4h ping in MR, 24h ping on chat + add second reviewer, 48h resolve non-blocking yourself
+
+### resource://rules/conventional-commits — Conventional Commits Spec
+
+Commit types, breaking changes, footers, scope conventions, and semantic-release integration.
+
+**Content:**
+
+- Format: `type(scope): description` — subject line max 72 chars, imperative mood, lowercase
+- Types: `feat` (minor), `fix` (patch), `perf` (patch), `refactor`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `revert` (patch)
+- Breaking changes: `!` suffix or `BREAKING CHANGE:` footer → major bump
+- Scope: module/component name, lowercase, kebab-case
+- Standard footers: `Closes: TICKET-123`, `Refs: TICKET-456`, `BREAKING CHANGE:`
+- Each commit = single logical change that compiles and passes tests
+- Monorepo: use package/directory name as scope
+- Squash commit type reflects primary change (`feat` + `fix` → `feat`)
+- Revert format: `revert: <original commit subject>` with reason and follow-up ticket
+
+### resource://guides/code-review — Code Review Standards
+
+Review priority order (Google Engineering Practices), Conventional Comments labels, turnaround expectations, and anti-patterns.
+
+**Content:**
+
+- Review priority: Correctness > Security > Design > Completeness > Tests > Readability > Style
+- Conventional Comments labels: `blocking:`, `nit:`, `suggestion:`, `question:`, `thought:`, `praise:`, `issue:`, `todo:`
+- Reviewer: read MR description first, check CI green, first response within 4h, limit to 2 rounds
+- Author: respond to every comment, push response commits separately, squash before merge not before re-review
+- Anti-patterns: rubber-stamping, gatekeeping, review bombing, scope creep
+- Security checklist: no secrets in code, input validation, SQL injection prevention, XSS prevention, SSRF prevention, rate limiting, audit logging, dependency CVE check
+- Response timing: same timezone 4h, cross-timezone next morning, urgent 2h, large MR (>800 lines) 8h
+- Large MR strategy: read description first, review tests first, core logic before peripheral files
+
+### resource://guides/codeowners — GitLab CODEOWNERS Reference
+
+CODEOWNERS syntax, sections with required approvals, optional sections, owner types, and governance patterns.
+
+**Content:**
+
+- File location (searched in order): `CODEOWNERS` (root), `docs/CODEOWNERS`, `.gitlab/CODEOWNERS` (preferred)
+- Pattern: `pattern @owner(s)` — last matching pattern wins
+- Pattern rules: `*` = everything, `/src/` = top-level only, `src/` = any depth, `*.js` = all .js files
+- Sections (Premium+): `[Name]` (1 approval), `[Name][2]` (2 approvals), `^[Name]` (optional)
+- Owner types: individual `@username`, group `@org/team`, multiple `@team-a @team-b`
+- Governance: review quarterly, use groups over individuals, protect the CODEOWNERS file itself
+- Troubleshooting "No Approvers Matched": pattern mismatch, departed member, group without project access, insufficient members, wrong file location
+
+## Prompts (5)
+
+The server provides MCP prompts — reusable multi-tool workflow templates that clients can surface as slash commands. All prompts accept full GitLab URLs (e.g. `https://gitlab.com/group/project/-/merge_requests/42`) and auto-extract project_id and resource IDs.
+
+### review_mr
+
+**Parameters:** `project_id` (required), `mr_iid` (optional — extracted from URL)
+
+**Workflow:**
+1. Fetch MR details — use `gitlab_get_mr` with project_id and mr_iid. Note the author, source/target branches, description, and labels.
+2. Check pipeline status — use `gitlab_get_pipeline` with the pipeline ID from step 1. If CI has not passed, flag it before proceeding.
+3. Get the diff — use `gitlab_mr_changes` to retrieve all changed files.
+4. Review each changed file — evaluate: correctness and logic errors, test coverage, security implications, performance, naming clarity and style consistency.
+5. Write inline comments — use `gitlab_create_mr_discussion` for each finding, anchored to file and line. Use Conventional Comments labels.
+6. Summarize — post an overall MR note via `gitlab_add_mr_note` with what the MR does well, blocking issues, and non-blocking suggestions.
+7. Verdict — approve if no blocking issues, otherwise request changes.
+
+**Review priority:** Design > Functionality > Complexity > Tests > Naming > Comments > Style.
+
+### diagnose_pipeline
+
+**Parameters:** `project_id` (required), `pipeline_id` (optional — extracted from URL)
+
+**Workflow:**
+1. Fetch pipeline details — use `gitlab_get_pipeline` with project_id and pipeline_id. Note status, ref, and created timestamp.
+2. Identify failed jobs — find jobs with status "failed". List each failed job with name, stage, and runner.
+3. Get job logs — for each failed job, use `gitlab_get_job_log` to retrieve trace output. Focus on last 100 lines.
+4. Analyze errors — identify root error message, whether failure is flaky or deterministic, missing environment variables.
+5. Suggest resolution — flaky: suggest `gitlab_retry_job`; deterministic: describe code/config fix; infra-related: flag for manual investigation.
+6. Summary — provide a table of failed jobs with diagnosis and recommended action.
+
+### prepare_release
+
+**Parameters:** `project_id` (required), `tag_name` (required), `ref` (optional, default: `main`)
+
+**Workflow:**
+1. List existing tags — use `gitlab_list_tags` to find the most recent tag (baseline for changelog).
+2. Compare commits — use `gitlab_compare` from previous tag to ref.
+3. Build changelog — group commits by conventional commit type: Features (`feat:`), Fixes (`fix:`), Breaking Changes, Other.
+4. Draft release notes — format as markdown with sections for each group, commit hash references, and author attribution.
+5. Create tag — use `gitlab_create_tag` with tag_name, ref, and release notes as message.
+6. Create release — use `gitlab_create_release` with tag_name and formatted changelog as description.
+7. Verify — confirm tag and release were created.
+
+### setup_branch_protection
+
+**Parameters:** `project_id` (required)
+
+**Workflow:**
+1. Review current settings — use `gitlab_get_project` to check merge method, approval settings, and default branch.
+2. Check existing approvals — use `gitlab_get_project_approvals` to see current rules and required count.
+3. Configure merge method — use `gitlab_update_project_merge_settings` to set merge method, delete source branch, squash commits, pipeline success requirement.
+4. Set approval requirements — use `gitlab_update_project_approvals` for required approvals, author self-approval, reset on push.
+5. Create approval rules — use `gitlab_create_project_approval_rule` for code owners and team-specific rules.
+6. Verify — re-fetch settings and rules to confirm.
+7. Summary — report what was configured and settings requiring manual UI adjustment.
+
+### triage_issues
+
+**Parameters:** `project_id` (required), `label` (optional)
+
+**Workflow:**
+1. List open issues — use `gitlab_list_issues` with state="opened" and optional label filter. Retrieve up to 100 issues.
+2. Categorize — group by: bug reports, feature requests, questions/support, stale (no activity in 30 days).
+3. Assess priority — consider upvotes/reactions, milestone assignment, age, blocking relationships.
+4. Identify duplicates — look for issues with similar titles or descriptions. Suggest closing duplicates with reference.
+5. Suggest labels — for unlabeled issues, recommend labels based on content analysis.
+6. Apply updates — use `gitlab_update_issue` to add labels, set priorities, close confirmed duplicates.
+7. Summary — triage report with total by category, top priority items, stale issues for closure, duplicates identified.
+
+## Security Considerations
+
+- **Token scope**: Use minimum required scope. `api` grants full access; prefer `read_api` for read-only deployments.
+- **Read-only mode**: `GITLAB_READ_ONLY=true` disables all write operations, enforced server-side before any API call.
+- **SSL verification**: `true` by default. Only disable for self-signed certificates in trusted networks.
+- **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically return `***MASKED***` for masked variables.
+- **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
+- **No credential storage**: The server does not persist tokens. Credentials are read from environment variables at startup.
+
+## Rate Limits
+
+GitLab enforces per-user rate limits (default: 2000 requests/minute for authenticated users). When rate-limited, tools return a 429 error with a hint to wait. Paginated endpoints default to 20 results per page; use `per_page` (max 100) to reduce API calls.
+
+## Development
+
+```bash
+git clone https://github.com/vish288/mcp-gitlab.git
+cd mcp-gitlab
+uv sync --all-extras
+
+uv run pytest --cov
+uv run ruff check .
+uv run ruff format --check .
+```
+
+Dependencies: fastmcp>=2.13.0, httpx>=0.28.0, pydantic>=2.10.0, python-dotenv>=1.0.1, click>=8.1.7

@@ -71,6 +71,12 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.next.outputs.version }}\"/" pyproject.toml
           cat pyproject.toml | grep '^version'
 
+      - name: Update llms.txt version
+        run: |
+          for f in llms.txt llms-full.txt; do
+            [ -f "$f" ] && sed -i 's/^- \*\*Version\*\*: .*/- **Version**: ${{ steps.next.outputs.version }}/' "$f"
+          done
+
       - name: Regenerate uv.lock
         run: uv lock
 
@@ -157,8 +163,10 @@ jobs:
           PYPROJECT_BLOB=$(create_blob pyproject.toml)
           UVLOCK_BLOB=$(create_blob uv.lock)
           CHANGELOG_BLOB=$(create_blob CHANGELOG.md)
+          LLMS_BLOB=$(create_blob llms.txt)
+          LLMS_FULL_BLOB=$(create_blob llms-full.txt)
 
-          # Create tree with all 3 files
+          # Create tree with all release files
           NEW_TREE=$(gh api repos/${{ github.repository }}/git/trees \
             -X POST \
             --input - <<EOF | jq -r '.sha'
@@ -182,6 +190,18 @@ jobs:
                 "mode": "100644",
                 "type": "blob",
                 "sha": "$CHANGELOG_BLOB"
+              },
+              {
+                "path": "llms.txt",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "$LLMS_BLOB"
+              },
+              {
+                "path": "llms-full.txt",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "$LLMS_FULL_BLOB"
               }
             ]
           }
