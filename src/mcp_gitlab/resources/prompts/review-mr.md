@@ -1,8 +1,8 @@
-# Review MR !{mr_iid} in project {project_id}
+# Review MR !$mr_iid in project $project_id
 
 ## Steps
 
-1. **Fetch MR details** — use `gitlab_get_mr` with project_id="{project_id}" and mr_iid="{mr_iid}". Note the author, source/target branches, description, and labels.
+1. **Fetch MR details** — use `gitlab_get_mr` with project_id="$project_id" and mr_iid="$mr_iid". Note the author, source/target branches, description, and labels.
 2. **Check pipeline status** — use `gitlab_get_pipeline` with the pipeline ID from step 1. If CI has not passed, flag it before proceeding.
 3. **Get the diff** — use `gitlab_mr_changes` to retrieve all changed files.
 4. **Review each changed file** — evaluate:
