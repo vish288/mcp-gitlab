@@ -5,7 +5,7 @@
 MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
 - **Install**: `uvx mcp-gitlab`
-- **Version**: 0.6.10
+- **Version**: 0.6.11
 - **Python**: >=3.10
 - **License**: MIT
 - **Transport**: stdio (default), SSE, streamable-http

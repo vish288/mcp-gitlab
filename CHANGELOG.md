@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.11] - 2026-02-27
+
+### Bug Fixes
+- fix: shorten server.json description to <=100 chars for MCP Registry (#38) (f0b7456)
+
+
 ## [0.6.10] - 2026-02-27
 
 ### Bug Fixes
