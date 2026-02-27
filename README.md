@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/mcp-gitlab)](https://pypi.org/project/mcp-gitlab/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/vish288/mcp-gitlab/actions/workflows/tests.yml/badge.svg)](https://github.com/vish288/mcp-gitlab/actions/workflows/tests.yml)
-[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/servers/io.github.vish288/mcp-gitlab)
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io)
 
 <!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
@@ -15,7 +15,7 @@ Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or P
 
 Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
 
-**Install:** `uvx mcp-gitlab` | [PyPI](https://pypi.org/project/mcp-gitlab/) | [MCP Registry](https://registry.modelcontextprotocol.io/servers/io.github.vish288/mcp-gitlab) | [Changelog](https://github.com/vish288/mcp-gitlab/releases)
+**Install:** `uvx mcp-gitlab` | [PyPI](https://pypi.org/project/mcp-gitlab/) | [MCP Registry](https://registry.modelcontextprotocol.io) | [Changelog](https://github.com/vish288/mcp-gitlab/releases)
 
 ## 1-Click Installation
 
