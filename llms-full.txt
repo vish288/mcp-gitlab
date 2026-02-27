@@ -1,29 +1,30 @@
 # mcp-gitlab
 
-> MCP server for the GitLab REST API providing 76 tools, 6 resources, and 5 prompts for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more.
+> MCP server for the GitLab REST API — 76 tools, 6 resources, and 5 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
 
-mcp-gitlab is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that wraps the GitLab REST API. It works with GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
+MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
 - **Install**: `uvx mcp-gitlab`
+- **Version**: 0.6.9
 - **Python**: >=3.10
 - **License**: MIT
-- **Version**: 0.6.9
 - **Transport**: stdio (default), SSE, streamable-http
+- **Registry**: `io.github.vish288/mcp-gitlab`
 - **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
 - **Optional env vars**: `GITLAB_READ_ONLY` (disable writes), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification)
 
 ## Documentation
 
-- [README](https://github.com/vish288/mcp-gitlab#readme): Full setup, configuration, tool reference, usage examples, security considerations
-- [PyPI](https://pypi.org/project/mcp-gitlab/): Package page with installation options
-- [GitHub Repository](https://github.com/vish288/mcp-gitlab): Source code, issues, development setup
-- [MCP Registry](https://registry.modelcontextprotocol.io): MCP server discovery
+- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 76 tools, 6 resources, 5 prompts
+- [PyPI](https://pypi.org/project/mcp-gitlab/): install via `pip install mcp-gitlab` or `uvx mcp-gitlab`
+- [GitHub](https://github.com/vish288/mcp-gitlab): source code, issue tracker, development setup
+- [MCP Registry](https://registry.modelcontextprotocol.io): discover and install MCP servers
 
 ## Optional
 
-- [Changelog](https://github.com/vish288/mcp-gitlab/releases): Release history and version notes
-- [MCP Specification](https://modelcontextprotocol.io/docs): Model Context Protocol documentation
-- [FastMCP](https://github.com/jlowin/fastmcp): Framework used to build this server
+- [Changelog](https://github.com/vish288/mcp-gitlab/releases): per-version release notes with breaking changes
+- [MCP Specification](https://modelcontextprotocol.io/docs): protocol spec for tools, resources, and prompts
+- [FastMCP](https://github.com/jlowin/fastmcp): Python framework this server is built on
 
 ## Configuration
 

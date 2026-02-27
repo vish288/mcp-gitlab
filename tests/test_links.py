@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 # Files to scan for URLs
-FILES_TO_CHECK = ["README.md", "pyproject.toml", "server.json"]
+FILES_TO_CHECK = ["README.md", "pyproject.toml", "server.json", "llms.txt", "llms-full.txt"]
 
 # Domains that are intentional placeholders — never fetch these
 PLACEHOLDER_DOMAINS = {
@@ -28,8 +28,10 @@ PLACEHOLDER_DOMAINS = {
     "localhost",
 }
 
-# GitHub Pages SPA routes — served via client-side routing, return 404 from server
-SPA_DOMAINS = {"vish288.github.io"}
+# Known SPA path prefixes — these use client-side routing and return 404 from server
+_SPA_ROUTES = {
+    "vish288.github.io": {"/mcp-install"},
+}
 
 # URL pattern: match http(s) URLs, stop at whitespace, quotes, backticks, or markdown closers
 URL_RE = re.compile(r"https?://[^\s\)\]\"\'>`]+")
@@ -72,9 +74,13 @@ def _is_schema_url(url: str) -> bool:
 def _is_spa_route(url: str) -> bool:
     """GitHub Pages SPA routes use client-side routing — server returns 404."""
     try:
-        host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-        has_path = "/" in url.split("://", 1)[1]
-        return host in SPA_DOMAINS and has_path
+        rest = url.split("://", 1)[1]
+        host = rest.split("/", 1)[0].split(":", 1)[0]
+        prefixes = _SPA_ROUTES.get(host)
+        if not prefixes:
+            return False
+        path = "/" + rest.split("/", 1)[1] if "/" in rest else "/"
+        return any(path.startswith(p) for p in prefixes)
     except (IndexError, ValueError):
         return False
 
