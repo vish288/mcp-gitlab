@@ -155,31 +155,32 @@ class GitLabClient:
         enc = self._encode_id(project_id)
         await self.delete(f"/projects/{enc}/approval_rules/{rule_id}")
 
+    # ── MR helpers ──────────────────────────────────────────────
+
+    def _mr_path(self, project_id: str | int, mr_iid: int) -> str:
+        return f"/projects/{self._encode_id(project_id)}/merge_requests/{mr_iid}"
+
     # ── MR approval rules ─────────────────────────────────────────
 
     async def list_mr_approval_rules(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        enc = self._encode_id(project_id)
-        return await self.get(f"/projects/{enc}/merge_requests/{mr_iid}/approval_rules")
+        return await self.get(f"{self._mr_path(project_id, mr_iid)}/approval_rules")
 
     async def create_mr_approval_rule(
         self, project_id: str | int, mr_iid: int, params: dict[str, Any]
     ) -> dict:
-        enc = self._encode_id(project_id)
-        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/approval_rules", params)
+        return await self.post(f"{self._mr_path(project_id, mr_iid)}/approval_rules", params)
 
     async def update_mr_approval_rule(
         self, project_id: str | int, mr_iid: int, rule_id: int, params: dict[str, Any]
     ) -> dict:
-        enc = self._encode_id(project_id)
         return await self.put(
-            f"/projects/{enc}/merge_requests/{mr_iid}/approval_rules/{rule_id}", params
+            f"{self._mr_path(project_id, mr_iid)}/approval_rules/{rule_id}", params
         )
 
     async def delete_mr_approval_rule(
         self, project_id: str | int, mr_iid: int, rule_id: int
     ) -> None:
-        enc = self._encode_id(project_id)
-        await self.delete(f"/projects/{enc}/merge_requests/{mr_iid}/approval_rules/{rule_id}")
+        await self.delete(f"{self._mr_path(project_id, mr_iid)}/approval_rules/{rule_id}")
 
     # ── Groups ────────────────────────────────────────────────────
 
@@ -277,8 +278,7 @@ class GitLabClient:
         return await self.get(f"/projects/{enc}/merge_requests", params=p)
 
     async def get_merge_request(self, project_id: str | int, mr_iid: int) -> dict:
-        enc = self._encode_id(project_id)
-        return await self.get(f"/projects/{enc}/merge_requests/{mr_iid}")
+        return await self.get(self._mr_path(project_id, mr_iid))
 
     async def create_merge_request(self, project_id: str | int, params: dict[str, Any]) -> dict:
         enc = self._encode_id(project_id)
@@ -287,34 +287,29 @@ class GitLabClient:
     async def update_merge_request(
         self, project_id: str | int, mr_iid: int, params: dict[str, Any]
     ) -> dict:
-        enc = self._encode_id(project_id)
-        return await self.put(f"/projects/{enc}/merge_requests/{mr_iid}", params)
+        return await self.put(self._mr_path(project_id, mr_iid), params)
 
     async def merge_merge_request(
         self, project_id: str | int, mr_iid: int, params: dict[str, Any] | None = None
     ) -> dict:
-        enc = self._encode_id(project_id)
-        return await self.put(f"/projects/{enc}/merge_requests/{mr_iid}/merge", params or {})
+        return await self.put(f"{self._mr_path(project_id, mr_iid)}/merge", params or {})
 
     async def rebase_merge_request(
         self, project_id: str | int, mr_iid: int, skip_ci: bool = False
     ) -> dict:
-        enc = self._encode_id(project_id)
         return await self.put(
-            f"/projects/{enc}/merge_requests/{mr_iid}/rebase",
+            f"{self._mr_path(project_id, mr_iid)}/rebase",
             {"skip_ci": skip_ci},
         )
 
     async def get_merge_request_changes(self, project_id: str | int, mr_iid: int) -> dict:
-        enc = self._encode_id(project_id)
-        return await self.get(f"/projects/{enc}/merge_requests/{mr_iid}/changes")
+        return await self.get(f"{self._mr_path(project_id, mr_iid)}/changes")
 
     # ── MR Notes ──────────────────────────────────────────────────
 
     async def list_mr_notes(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        enc = self._encode_id(project_id)
         return await self.get(
-            f"/projects/{enc}/merge_requests/{mr_iid}/notes",
+            f"{self._mr_path(project_id, mr_iid)}/notes",
             params={"per_page": 100},
         )
 
@@ -325,79 +320,67 @@ class GitLabClient:
         body: str,
         internal: bool = False,
     ) -> dict:
-        enc = self._encode_id(project_id)
         data: dict[str, Any] = {"body": body}
         if internal:
             data["internal"] = True
-        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/notes", data)
+        return await self.post(f"{self._mr_path(project_id, mr_iid)}/notes", data)
 
     async def delete_mr_note(self, project_id: str | int, mr_iid: int, note_id: int) -> None:
-        enc = self._encode_id(project_id)
-        await self.delete(f"/projects/{enc}/merge_requests/{mr_iid}/notes/{note_id}")
+        await self.delete(f"{self._mr_path(project_id, mr_iid)}/notes/{note_id}")
 
     async def update_mr_note(
         self, project_id: str | int, mr_iid: int, note_id: int, body: str
     ) -> dict:
-        enc = self._encode_id(project_id)
         return await self.put(
-            f"/projects/{enc}/merge_requests/{mr_iid}/notes/{note_id}",
+            f"{self._mr_path(project_id, mr_iid)}/notes/{note_id}",
             {"body": body},
         )
 
     async def award_emoji(
         self, project_id: str | int, mr_iid: int, note_id: int, name: str
     ) -> dict:
-        enc = self._encode_id(project_id)
         return await self.post(
-            f"/projects/{enc}/merge_requests/{mr_iid}/notes/{note_id}/award_emoji",
+            f"{self._mr_path(project_id, mr_iid)}/notes/{note_id}/award_emoji",
             {"name": name},
         )
 
     async def delete_award_emoji(
         self, project_id: str | int, mr_iid: int, note_id: int, award_id: int
     ) -> None:
-        enc = self._encode_id(project_id)
         await self.delete(
-            f"/projects/{enc}/merge_requests/{mr_iid}/notes/{note_id}/award_emoji/{award_id}"
+            f"{self._mr_path(project_id, mr_iid)}/notes/{note_id}/award_emoji/{award_id}"
         )
 
     # ── MR Discussions ────────────────────────────────────────────
 
     async def list_mr_discussions(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        enc = self._encode_id(project_id)
         return await self.get(
-            f"/projects/{enc}/merge_requests/{mr_iid}/discussions",
+            f"{self._mr_path(project_id, mr_iid)}/discussions",
             params={"per_page": 100},
         )
 
     async def create_mr_discussion(
         self, project_id: str | int, mr_iid: int, params: dict[str, Any]
     ) -> dict:
-        enc = self._encode_id(project_id)
-        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/discussions", params)
+        return await self.post(f"{self._mr_path(project_id, mr_iid)}/discussions", params)
 
     async def reply_to_discussion(
         self, project_id: str | int, mr_iid: int, discussion_id: str, body: str
     ) -> dict:
-        enc = self._encode_id(project_id)
         return await self.post(
-            f"/projects/{enc}/merge_requests/{mr_iid}/discussions/{discussion_id}/notes",
+            f"{self._mr_path(project_id, mr_iid)}/discussions/{discussion_id}/notes",
             {"body": body},
         )
 
     async def resolve_discussion(
         self, project_id: str | int, mr_iid: int, discussion_id: str, resolved: bool
     ) -> dict:
-        enc = self._encode_id(project_id)
         return await self.put(
-            f"/projects/{enc}/merge_requests/{mr_iid}/discussions/{discussion_id}",
+            f"{self._mr_path(project_id, mr_iid)}/discussions/{discussion_id}",
             {"resolved": resolved},
         )
 
     # ── MR Approvals & Metadata ──────────────────────────────────
-
-    def _mr_path(self, project_id: str | int, mr_iid: int) -> str:
-        return f"/projects/{self._encode_id(project_id)}/merge_requests/{mr_iid}"
 
     async def approve_merge_request(
         self, project_id: str | int, mr_iid: int, sha: str | None = None
