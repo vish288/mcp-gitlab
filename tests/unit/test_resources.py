@@ -7,6 +7,7 @@ from pathlib import Path
 from mcp_gitlab.servers.resources import (
     _RESOURCES_DIR,
     _load,
+    approval_workflow_guide,
     code_review_guide,
     codeowners_guide,
     conventional_commits_rules,
@@ -46,6 +47,11 @@ EXPECTED_RESOURCES = {
         "fn": codeowners_guide,
         "file": "codeowners.md",
     },
+    "resource://guides/approval-workflow": {
+        "name": "Approval Workflow Guide",
+        "fn": approval_workflow_guide,
+        "file": "approval-workflow.md",
+    },
 }
 
 RESOURCE_FILES = [
@@ -55,6 +61,7 @@ RESOURCE_FILES = [
     "conventional-commits.md",
     "code-review.md",
     "codeowners.md",
+    "approval-workflow.md",
 ]
 
 
@@ -120,7 +127,7 @@ class TestResourceRegistration:
     """Verify resources are importable and return content."""
 
     def test_resource_count(self) -> None:
-        assert len(EXPECTED_RESOURCES) == 6
+        assert len(EXPECTED_RESOURCES) == 7
 
     def test_each_resource_returns_file_content(self) -> None:
         for uri, info in EXPECTED_RESOURCES.items():

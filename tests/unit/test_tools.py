@@ -1137,6 +1137,167 @@ class TestMRDiscussions:
 
 
 # ═══════════════════════════════════════════════════════
+# MR Approvals & Metadata
+# ═══════════════════════════════════════════════════════
+
+
+class TestMRApprovalsAndMetadata:
+    async def test_approve_mr(self, tool_client):
+        client, router = tool_client
+        router.post("/projects/123/merge_requests/1/approve").mock(
+            return_value=Response(200, json={"iid": 1, "approved": True, "approvals_left": 0})
+        )
+        result = await client.call_tool("gitlab_approve_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert parsed["approved"] is True
+
+    async def test_approve_mr_with_sha(self, tool_client):
+        client, router = tool_client
+        router.post("/projects/123/merge_requests/1/approve").mock(
+            return_value=Response(200, json={"iid": 1, "approved": True, "approvals_left": 0})
+        )
+        result = await client.call_tool(
+            "gitlab_approve_mr",
+            {"project_id": "123", "mr_iid": 1, "sha": "abc123"},
+        )
+        parsed = _parse(result)
+        assert parsed["approved"] is True
+
+    async def test_approve_mr_readonly_blocked(self, readonly_client):
+        client, router = readonly_client
+        result = await client.call_tool("gitlab_approve_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert "read-only" in parsed["hint"].lower()
+
+    async def test_unapprove_mr(self, tool_client):
+        client, router = tool_client
+        router.post("/projects/123/merge_requests/1/unapprove").mock(
+            return_value=Response(200, json={"iid": 1, "approved": False, "approvals_left": 1})
+        )
+        result = await client.call_tool("gitlab_unapprove_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert parsed["approved"] is False
+
+    async def test_unapprove_mr_readonly_blocked(self, readonly_client):
+        client, router = readonly_client
+        result = await client.call_tool("gitlab_unapprove_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert "read-only" in parsed["hint"].lower()
+
+    async def test_get_mr_approvals(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1/approvals").mock(
+            return_value=Response(
+                200,
+                json={
+                    "approved": True,
+                    "approvals_required": 2,
+                    "approvals_left": 0,
+                    "approved_by": [{"user": {"username": "reviewer1"}}],
+                },
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_get_mr_approvals", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert parsed["approved"] is True
+        assert parsed["approvals_required"] == 2
+        assert len(parsed["approved_by"]) == 1
+
+    async def test_list_mr_reviewers(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1").mock(
+            return_value=Response(
+                200,
+                json={
+                    "iid": 1,
+                    "reviewers": [
+                        {"id": 10, "username": "reviewer1"},
+                        {"id": 20, "username": "reviewer2"},
+                    ],
+                },
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_list_mr_reviewers", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert len(parsed) == 2
+        assert parsed[0]["username"] == "reviewer1"
+
+    async def test_list_mr_pipelines(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1/pipelines").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {"id": 100, "status": "success", "ref": "feat/test"},
+                    {"id": 99, "status": "failed", "ref": "feat/test"},
+                ],
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_list_mr_pipelines", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert parsed["count"] == 2
+        assert parsed["items"][0]["status"] == "success"
+
+    async def test_list_mr_commits(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1/commits").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {"id": "abc123", "title": "feat: add login", "author_name": "dev"},
+                    {"id": "def456", "title": "fix: typo", "author_name": "dev"},
+                ],
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_list_mr_commits", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert parsed["count"] == 2
+        assert parsed["items"][0]["id"] == "abc123"
+
+    async def test_subscribe_mr(self, tool_client):
+        client, router = tool_client
+        router.post("/projects/123/merge_requests/1/subscribe").mock(
+            return_value=Response(200, json={"iid": 1, "subscribed": True})
+        )
+        result = await client.call_tool("gitlab_subscribe_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert parsed["subscribed"] is True
+
+    async def test_subscribe_mr_readonly_blocked(self, readonly_client):
+        client, router = readonly_client
+        result = await client.call_tool("gitlab_subscribe_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert "read-only" in parsed["hint"].lower()
+
+    async def test_unsubscribe_mr(self, tool_client):
+        client, router = tool_client
+        router.post("/projects/123/merge_requests/1/unsubscribe").mock(
+            return_value=Response(200, json={"iid": 1, "subscribed": False})
+        )
+        result = await client.call_tool("gitlab_unsubscribe_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert parsed["subscribed"] is False
+
+    async def test_unsubscribe_mr_readonly_blocked(self, readonly_client):
+        client, router = readonly_client
+        result = await client.call_tool("gitlab_unsubscribe_mr", {"project_id": "123", "mr_iid": 1})
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert "read-only" in parsed["hint"].lower()
+
+
+# ═══════════════════════════════════════════════════════
 # Pipelines (write operations)
 # ═══════════════════════════════════════════════════════
 

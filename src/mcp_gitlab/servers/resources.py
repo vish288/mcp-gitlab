@@ -115,6 +115,21 @@ def codeowners_guide() -> str:
     return _load("codeowners.md")
 
 
+@mcp.resource(
+    "resource://guides/approval-workflow",
+    name="Approval Workflow Guide",
+    description=(
+        "Approval types, project vs MR-level rules, approval workflow, "
+        "SHA safety checks, merge readiness checklist"
+    ),
+    mime_type="text/markdown",
+    tags={"guide", "gitlab", "approvals", "merge-request"},
+)
+def approval_workflow_guide() -> str:
+    """Approval workflow guide with merge readiness checklist."""
+    return _load("approval-workflow.md")
+
+
 # ════════════════════════════════════════════════════════════════════
 # Startup validation
 # ════════════════════════════════════════════════════════════════════
@@ -126,6 +141,7 @@ _RESOURCE_FILES = [
     "conventional-commits.md",
     "code-review.md",
     "codeowners.md",
+    "approval-workflow.md",
 ]
 
 

@@ -1,6 +1,7 @@
 """MCP server for GitLab API."""
 
 import asyncio
+import logging
 import os
 
 import click
@@ -36,6 +37,11 @@ def main(
         os.environ["GITLAB_TOKEN"] = gitlab_token
     if read_only:
         os.environ["GITLAB_READ_ONLY"] = "true"
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(name)s | %(message)s",
+    )
 
     from .servers import prompts, resources  # noqa: F401 — registers decorators
     from .servers.gitlab import mcp

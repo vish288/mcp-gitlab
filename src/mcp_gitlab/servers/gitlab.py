@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
@@ -13,6 +15,8 @@ from pydantic import Field
 from ..client import GitLabClient
 from ..config import GitLabConfig
 from ..exceptions import GitLabWriteDisabledError
+
+_log = logging.getLogger(__name__)
 
 ACCESS_LEVELS = {
     "guest": 10,
@@ -27,6 +31,9 @@ ACCESS_LEVELS = {
 async def lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     config = GitLabConfig.from_env()
     config.validate()
+    pkg_version = version("mcp-gitlab")
+    _log.info("mcp-gitlab %s starting", pkg_version)
+    _log.info("GitLab: %s (read-only: %s)", config.url, config.read_only)
     client = GitLabClient(config)
     try:
         yield {"client": client, "config": config}
@@ -1351,6 +1358,155 @@ async def gitlab_resolve_discussion(
         data = await _get_client(ctx).resolve_discussion(
             project_id, mr_iid, discussion_id, resolved
         )
+        return _ok(data)
+    except Exception as e:
+        return _err(e)
+
+
+# ════════════════════════════════════════════════════════════════════
+# MR Approvals & Metadata
+# ════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "approvals", "write"},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
+)
+async def gitlab_approve_mr(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+    sha: Annotated[
+        str | None,
+        Field(description="Expected HEAD SHA — returns 409 if mismatched (safety check)"),
+    ] = None,
+) -> str:
+    """Approve a merge request. Optionally pass sha to ensure HEAD hasn't changed."""
+    try:
+        _check_write(ctx)
+        data = await _get_client(ctx).approve_merge_request(project_id, mr_iid, sha)
+        return _ok(data)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "approvals", "write"},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
+)
+async def gitlab_unapprove_mr(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """Remove the current user's approval from a merge request."""
+    try:
+        _check_write(ctx)
+        data = await _get_client(ctx).unapprove_merge_request(project_id, mr_iid)
+        return _ok(data)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "approvals", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+async def gitlab_get_mr_approvals(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """Get approval state for a merge request (approvers, remaining approvals, rules)."""
+    try:
+        data = await _get_client(ctx).get_mr_approvals(project_id, mr_iid)
+        return _ok(data)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+async def gitlab_list_mr_reviewers(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """List reviewers assigned to a merge request."""
+    try:
+        data = await _get_client(ctx).get_merge_request(project_id, mr_iid)
+        return _ok(data.get("reviewers", []))
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "pipelines", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+async def gitlab_list_mr_pipelines(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """List pipelines associated with a merge request."""
+    try:
+        data = await _get_client(ctx).list_mr_pipelines(project_id, mr_iid)
+        return _paginated(data)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "commits", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+async def gitlab_list_mr_commits(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """List commits included in a merge request."""
+    try:
+        data = await _get_client(ctx).list_mr_commits(project_id, mr_iid)
+        return _paginated(data)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "write"},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
+)
+async def gitlab_subscribe_mr(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """Subscribe to notifications for a merge request."""
+    try:
+        _check_write(ctx)
+        data = await _get_client(ctx).subscribe_mr(project_id, mr_iid)
+        return _ok(data)
+    except Exception as e:
+        return _err(e)
+
+
+@mcp.tool(
+    tags={"gitlab", "merge_requests", "write"},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
+)
+async def gitlab_unsubscribe_mr(
+    ctx: Context,
+    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """Unsubscribe from notifications for a merge request."""
+    try:
+        _check_write(ctx)
+        data = await _get_client(ctx).unsubscribe_mr(project_id, mr_iid)
         return _ok(data)
     except Exception as e:
         return _err(e)

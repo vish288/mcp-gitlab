@@ -9,7 +9,7 @@
 
 <!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
-**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **76 tools**, **6 resources**, and **5 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **84 tools**, **7 resources**, and **6 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
 Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
 
@@ -111,7 +111,7 @@ These accept any of the following token types:
 | Windsurf | Yes | `~/.codeium/windsurf/mcp_config.json` |
 | Any MCP client | Yes | stdio or HTTP transport |
 
-## Tools (76)
+## Tools (84)
 
 | Category | Count | Tools |
 |----------|-------|-------|
@@ -120,7 +120,7 @@ These accept any of the following token types:
 | **Groups** | 6 | list, get, share/unshare project, share/unshare group |
 | **Branches** | 3 | list, create, delete |
 | **Commits** | 4 | list, get (with diff), create, compare |
-| **Merge Requests** | 8 | list, get, create, update, merge, merge-sequence, rebase, changes |
+| **Merge Requests** | 16 | list, get, create, update, merge, merge-sequence, rebase, changes, approve, unapprove, get approvals, list reviewers, list pipelines, list commits, subscribe, unsubscribe |
 | **MR Notes** | 6 | list, add, delete, update, award emoji, remove emoji |
 | **MR Discussions** | 4 | list, create (inline + multi-line), reply, resolve |
 | **Pipelines** | 5 | list, get (with jobs), create, retry, cancel |
@@ -191,6 +191,14 @@ These accept any of the following token types:
 | `gitlab_merge_mr_sequence` | Merge multiple MRs in order |
 | `gitlab_rebase_mr` | Rebase a merge request |
 | `gitlab_mr_changes` | Get MR file changes |
+| `gitlab_approve_mr` | Approve a merge request |
+| `gitlab_unapprove_mr` | Remove approval from a merge request |
+| `gitlab_get_mr_approvals` | Get MR approval state |
+| `gitlab_list_mr_reviewers` | List MR reviewers |
+| `gitlab_list_mr_pipelines` | List MR pipelines |
+| `gitlab_list_mr_commits` | List MR commits |
+| `gitlab_subscribe_mr` | Subscribe to MR notifications |
+| `gitlab_unsubscribe_mr` | Unsubscribe from MR notifications |
 
 ### MR Notes
 | Tool | Description |
@@ -267,7 +275,7 @@ These accept any of the following token types:
 
 </details>
 
-## Resources (6)
+## Resources (7)
 
 The server exposes curated workflow guides as [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) that clients can read on demand.
 
@@ -279,14 +287,16 @@ The server exposes curated workflow guides as [MCP resources](https://modelconte
 | `resource://rules/conventional-commits` | Conventional Commits Spec | Commit types, scopes, breaking changes, changelog generation |
 | `resource://guides/code-review` | Code Review Standards | Review priorities, inline comments, approval workflows, nit vs blocker |
 | `resource://guides/codeowners` | GitLab CODEOWNERS Reference | Syntax, section owners, approval rules, pattern matching |
+| `resource://guides/approval-workflow` | Approval Workflow Guide | Approval types, project vs MR-level rules, SHA safety, merge readiness |
 
-## Prompts (5)
+## Prompts (6)
 
 The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/prompts) — reusable multi-tool workflow templates that clients can surface as slash commands.
 
 | Prompt | Parameters | Workflow |
 |--------|-----------|----------|
 | `review_mr` | `project_id`, `mr_iid` | Fetch MR → check pipeline → review changes → write discussion notes |
+| `approve_mr` | `project_id`, `mr_iid` | Check approvals → verify pipeline → review changes → approve or request changes |
 | `diagnose_pipeline` | `project_id`, `pipeline_id` | Fetch pipeline → identify failed jobs → get logs → suggest fix |
 | `prepare_release` | `project_id`, `tag_name`, `ref` | Compare commits since last tag → draft changelog → create tag + release |
 | `setup_branch_protection` | `project_id` | Review settings → configure merge method → set approval rules |

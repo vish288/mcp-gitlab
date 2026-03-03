@@ -1,6 +1,6 @@
 # mcp-gitlab — Agent Context
 
-MCP server providing 76 tools for the GitLab REST API v4.
+MCP server providing 84 tools for the GitLab REST API v4.
 
 ## Architecture
 
@@ -54,11 +54,11 @@ Every tool MUST have `annotations={}` with at minimum `readOnlyHint`.
 
 ### Naming Convention
 - Pattern: `gitlab_{verb}_{resource}` (snake_case)
-- Verbs: create, get, list, search, update, delete, merge, rebase, retry, play, cancel, award, remove, share, unshare, compare, add, reply, resolve
+- Verbs: create, get, list, search, update, delete, merge, rebase, retry, play, cancel, award, remove, share, unshare, compare, add, reply, resolve, approve, unapprove, subscribe, unsubscribe
 
 ## Tool Categories
 
-Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Requests (8), MR Notes (6), MR Discussions (4), Pipelines (5), Jobs (4), Tags (4), Releases (5), CI/CD Variables (8), Issues (5)
+Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Requests (16), MR Notes (6), MR Discussions (4), Pipelines (5), Jobs (4), Tags (4), Releases (5), CI/CD Variables (8), Issues (5)
 
 ## Environment Variables
 
@@ -107,5 +107,5 @@ Prompts follow the resources pattern: prompt content lives as `.md` files in `sr
 
 ## Known Limitations / Future Work
 
-- 76 tools in one server file (exceeds 5-15 guideline). Consider splitting by category in a future refactor.
+- 84 tools in one server file (exceeds 5-15 guideline). Consider splitting by category in a future refactor.
 - Errors are returned as successful tool results with `{"error": ...}` (soft-error pattern). Callers must inspect JSON content.

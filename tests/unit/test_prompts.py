@@ -9,6 +9,7 @@ import pytest
 from mcp_gitlab.servers.prompts import (
     _PROMPTS_DIR,
     _load_prompt,
+    approve_mr,
     diagnose_pipeline,
     prepare_release,
     review_mr,
@@ -20,6 +21,11 @@ EXPECTED_PROMPTS = {
     "review_mr": {
         "fn": review_mr,
         "file": "review-mr.md",
+        "args": {"project_id": "123", "mr_iid": "42"},
+    },
+    "approve_mr": {
+        "fn": approve_mr,
+        "file": "approve-mr.md",
         "args": {"project_id": "123", "mr_iid": "42"},
     },
     "diagnose_pipeline": {
@@ -101,7 +107,7 @@ class TestPromptRegistration:
     """Verify prompts are registered and return valid messages."""
 
     def test_prompt_count(self) -> None:
-        assert len(EXPECTED_PROMPTS) == 5
+        assert len(EXPECTED_PROMPTS) == 6
 
     def test_each_prompt_returns_messages(self) -> None:
         for name, info in EXPECTED_PROMPTS.items():
@@ -150,6 +156,14 @@ class TestURLParsing:
 
     def test_review_mr_from_url(self) -> None:
         result = review_mr(
+            project_id="https://gitlab.example.com/my-group/my-project/-/merge_requests/42"
+        )
+        assert "my-group/my-project" in result[0].content.text
+        assert "42" in result[0].content.text
+        assert "42" in result[1].content.text
+
+    def test_approve_mr_from_url(self) -> None:
+        result = approve_mr(
             project_id="https://gitlab.example.com/my-group/my-project/-/merge_requests/42"
         )
         assert "my-group/my-project" in result[0].content.text

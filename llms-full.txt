@@ -1,6 +1,6 @@
 # mcp-gitlab
 
-> MCP server for the GitLab REST API — 76 tools, 6 resources, and 5 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
+> MCP server for the GitLab REST API — 84 tools, 7 resources, and 6 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
 
 MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
@@ -15,7 +15,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 
 ## Documentation
 
-- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 76 tools, 6 resources, 5 prompts
+- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 84 tools, 6 resources, 5 prompts
 - [PyPI](https://pypi.org/project/mcp-gitlab/): install via `pip install mcp-gitlab` or `uvx mcp-gitlab`
 - [GitHub](https://github.com/vish288/mcp-gitlab): source code, issue tracker, development setup
 - [MCP Registry](https://registry.modelcontextprotocol.io): discover and install MCP servers
@@ -79,7 +79,7 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | Delete projects, manage approval rules | Maintainer/Owner |
 | Share projects/groups | Owner (or Admin) |
 
-## Tools (76)
+## Tools (84)
 
 ### Projects (4)
 
@@ -133,7 +133,7 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | `gitlab_create_commit` | Create a commit with multiple file actions |
 | `gitlab_compare` | Compare two branches, tags, or commits |
 
-### Merge Requests (8)
+### Merge Requests (16)
 
 | Tool | Description |
 |------|-------------|
@@ -145,6 +145,14 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | `gitlab_merge_mr_sequence` | Merge multiple MRs in sequence (stops on first failure) |
 | `gitlab_rebase_mr` | Rebase a merge request |
 | `gitlab_mr_changes` | Get file changes of a merge request (diffs with old/new paths and content) |
+| `gitlab_approve_mr` | Approve a merge request (optionally with SHA safety check) |
+| `gitlab_unapprove_mr` | Remove current user's approval from a merge request |
+| `gitlab_get_mr_approvals` | Get approval state (approvers, remaining approvals, rules) |
+| `gitlab_list_mr_reviewers` | List reviewers assigned to a merge request |
+| `gitlab_list_mr_pipelines` | List pipelines associated with a merge request |
+| `gitlab_list_mr_commits` | List commits included in a merge request |
+| `gitlab_subscribe_mr` | Subscribe to merge request notifications |
+| `gitlab_unsubscribe_mr` | Unsubscribe from merge request notifications |
 
 ### MR Notes (6)
 
@@ -327,7 +335,21 @@ CODEOWNERS syntax, sections with required approvals, optional sections, owner ty
 - Governance: review quarterly, use groups over individuals, protect the CODEOWNERS file itself
 - Troubleshooting "No Approvers Matched": pattern mismatch, departed member, group without project access, insufficient members, wrong file location
 
-## Prompts (5)
+### resource://guides/approval-workflow — Approval Workflow Guide
+
+Approval types, project vs MR-level rules, approval workflow, SHA safety checks, and merge readiness checklist.
+
+**Content:**
+
+- Project-level rules: default required approvals for all MRs; configure via `gitlab_get_project_approvals` / `gitlab_update_project_approvals`
+- MR-level rules: override or extend project rules per MR; configure via `gitlab_list_mr_approval_rules` / `gitlab_create_mr_approval_rule`
+- Before approving: CI must pass (`gitlab_list_mr_pipelines`), all threads resolved (`gitlab_list_mr_discussions`), MR not in draft, changes reviewed (`gitlab_mr_changes`, `gitlab_list_mr_commits`)
+- Use `gitlab_approve_mr` with `sha` param to prevent approving stale code (409 on mismatch)
+- Use `gitlab_unapprove_mr` to withdraw approval after discovering issues post-approval
+- Approval reset: configure "Remove all approvals when commits are added" to prevent stale approvals
+- Merge readiness: approvals met, pipeline passing, no unresolved threads, no merge conflicts, target branch up to date
+
+## Prompts (6)
 
 The server provides MCP prompts — reusable multi-tool workflow templates that clients can surface as slash commands. All prompts accept full GitLab URLs (e.g. `https://gitlab.com/group/project/-/merge_requests/42`) and auto-extract project_id and resource IDs.
 
@@ -345,6 +367,21 @@ The server provides MCP prompts — reusable multi-tool workflow templates that 
 7. Verdict — approve if no blocking issues, otherwise request changes.
 
 **Review priority:** Design > Functionality > Complexity > Tests > Naming > Comments > Style.
+
+### approve_mr
+
+**Parameters:** `project_id` (required), `mr_iid` (optional — extracted from URL)
+
+**Workflow:**
+1. Fetch MR details — use `gitlab_get_mr` with project_id and mr_iid. Note author, branches, description, labels, and merge status.
+2. Check approval state — use `gitlab_get_mr_approvals` to see required approvals, who approved, and which rules apply.
+3. Check pipeline status — use `gitlab_list_mr_pipelines` to find the latest pipeline. Do not approve if CI has not passed.
+4. Review commits — use `gitlab_list_mr_commits` to understand scope. Flag force-pushed commits that may invalidate earlier reviews.
+5. Review the diff — use `gitlab_mr_changes` to inspect changed files for correctness, security, and test coverage.
+6. Check open discussions — use `gitlab_list_mr_discussions` and verify all threads are resolved.
+7. Decision — if all checks pass, use `gitlab_approve_mr` with HEAD sha. If issues found, post findings via `gitlab_create_mr_discussion`.
+
+**Safety:** Always pass `sha` to `gitlab_approve_mr` to prevent approving stale code after new commits.
 
 ### diagnose_pipeline
 

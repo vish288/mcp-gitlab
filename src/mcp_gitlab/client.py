@@ -394,6 +394,41 @@ class GitLabClient:
             {"resolved": resolved},
         )
 
+    # ── MR Approvals & Metadata ──────────────────────────────────
+
+    async def approve_merge_request(
+        self, project_id: str | int, mr_iid: int, sha: str | None = None
+    ) -> dict:
+        enc = self._encode_id(project_id)
+        data: dict[str, Any] = {}
+        if sha:
+            data["sha"] = sha
+        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/approve", data or None)
+
+    async def unapprove_merge_request(self, project_id: str | int, mr_iid: int) -> dict:
+        enc = self._encode_id(project_id)
+        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/unapprove")
+
+    async def get_mr_approvals(self, project_id: str | int, mr_iid: int) -> dict:
+        enc = self._encode_id(project_id)
+        return await self.get(f"/projects/{enc}/merge_requests/{mr_iid}/approvals")
+
+    async def list_mr_pipelines(self, project_id: str | int, mr_iid: int) -> list[dict]:
+        enc = self._encode_id(project_id)
+        return await self.get(f"/projects/{enc}/merge_requests/{mr_iid}/pipelines")
+
+    async def list_mr_commits(self, project_id: str | int, mr_iid: int) -> list[dict]:
+        enc = self._encode_id(project_id)
+        return await self.get(f"/projects/{enc}/merge_requests/{mr_iid}/commits")
+
+    async def subscribe_mr(self, project_id: str | int, mr_iid: int) -> dict:
+        enc = self._encode_id(project_id)
+        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/subscribe")
+
+    async def unsubscribe_mr(self, project_id: str | int, mr_iid: int) -> dict:
+        enc = self._encode_id(project_id)
+        return await self.post(f"/projects/{enc}/merge_requests/{mr_iid}/unsubscribe")
+
     # ── Pipelines ─────────────────────────────────────────────────
 
     async def list_pipelines(

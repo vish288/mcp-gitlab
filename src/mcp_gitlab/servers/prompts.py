@@ -122,6 +122,30 @@ def setup_branch_protection(project_id: str) -> list[Message]:
     ]
 
 
+@mcp.prompt(tags={"gitlab", "review", "approvals"})
+def approve_mr(project_id: str, mr_iid: str = "") -> list[Message]:
+    """Evaluate a merge request for approval — check pipeline, review changes,
+    verify discussions are resolved, then approve or request changes.
+
+    Accepts a full MR URL (e.g. https://gitlab.com/group/project/-/merge_requests/42)
+    as project_id — mr_iid will be extracted automatically.
+    """
+    parsed_project, parsed_iid = _parse_gitlab_mr_url(project_id)
+    if parsed_iid:
+        project_id, mr_iid = parsed_project, parsed_iid
+    text = _render("approve-mr.md", project_id=project_id, mr_iid=mr_iid)
+    return [
+        Message(role="user", content=text),
+        Message(
+            role="assistant",
+            content=(
+                f"I'll evaluate MR !{mr_iid} in project {project_id} for approval. "
+                "Let me check the approval state, pipeline status, and review the changes."
+            ),
+        ),
+    ]
+
+
 @mcp.prompt(tags={"gitlab", "issues"})
 def triage_issues(project_id: str, label: str = "") -> list[Message]:
     """Triage open issues — categorize, prioritize, identify duplicates,
@@ -150,6 +174,7 @@ def triage_issues(project_id: str, label: str = "") -> list[Message]:
 
 _PROMPT_FILES = [
     "review-mr.md",
+    "approve-mr.md",
     "diagnose-pipeline.md",
     "prepare-release.md",
     "setup-branch-protection.md",
