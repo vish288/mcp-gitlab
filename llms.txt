@@ -1,6 +1,6 @@
 # mcp-gitlab
 
-> MCP server for the GitLab REST API — 84 tools, 7 resources, and 6 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
+> MCP server for the GitLab REST API — 83 tools, 7 resources, and 6 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
 
 MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
@@ -15,7 +15,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 
 ## Documentation
 
-- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 84 tools, 6 resources, 5 prompts
+- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 83 tools, 6 resources, 5 prompts
 - [PyPI](https://pypi.org/project/mcp-gitlab/): install via `pip install mcp-gitlab` or `uvx mcp-gitlab`
 - [GitHub](https://github.com/vish288/mcp-gitlab): source code, issue tracker, development setup
 - [MCP Registry](https://registry.modelcontextprotocol.io): discover and install MCP servers

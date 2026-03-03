@@ -1,11 +1,11 @@
 # mcp-gitlab — Gemini CLI Extension Context
 
-MCP server providing 84 tools, 7 resources, and 6 prompts for interacting with the GitLab API. Covers the full lifecycle of GitLab projects: code, reviews, CI/CD, releases, and issue tracking.
+MCP server providing 83 tools, 7 resources, and 6 prompts for interacting with the GitLab API. Covers the full lifecycle of GitLab projects: code, reviews, CI/CD, releases, and issue tracking.
 
 ## Tool Categories
 
 - **Projects** — get, create, delete, update merge settings, share/unshare with groups
-- **Merge Requests** — list, get, create, update, merge, rebase, view changes and diffs, approve, unapprove, get approvals, list reviewers, list pipelines, list commits, subscribe, unsubscribe
+- **Merge Requests** — list, get, create, update, merge, rebase, view changes and diffs, approve, unapprove, get approvals, list pipelines, list commits, subscribe, unsubscribe
 - **MR Reviews** — list/add/update/delete notes, list/create discussions, reply to and resolve discussions, award/remove emoji
 - **MR Approvals** — project-level and MR-level approval rules (list, create, update, delete)
 - **Pipelines & Jobs** — list/get/create/retry/cancel pipelines, retry/play/cancel jobs, get job logs

@@ -1426,23 +1426,6 @@ async def gitlab_get_mr_approvals(
 
 
 @mcp.tool(
-    tags={"gitlab", "merge_requests", "read"},
-    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
-)
-async def gitlab_list_mr_reviewers(
-    ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
-    mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
-    """List reviewers assigned to a merge request."""
-    try:
-        data = await _get_client(ctx).get_merge_request(project_id, mr_iid)
-        return _ok(data.get("reviewers", []))
-    except Exception as e:
-        return _err(e)
-
-
-@mcp.tool(
     tags={"gitlab", "merge_requests", "pipelines", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )

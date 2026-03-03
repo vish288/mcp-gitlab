@@ -9,7 +9,7 @@
 
 <!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
-**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **84 tools**, **7 resources**, and **6 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **83 tools**, **7 resources**, and **6 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
 Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
 
@@ -194,7 +194,6 @@ These accept any of the following token types:
 | `gitlab_approve_mr` | Approve a merge request |
 | `gitlab_unapprove_mr` | Remove approval from a merge request |
 | `gitlab_get_mr_approvals` | Get MR approval state |
-| `gitlab_list_mr_reviewers` | List MR reviewers |
 | `gitlab_list_mr_pipelines` | List MR pipelines |
 | `gitlab_list_mr_commits` | List MR commits |
 | `gitlab_subscribe_mr` | Subscribe to MR notifications |

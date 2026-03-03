@@ -1,6 +1,6 @@
 # mcp-gitlab — Agent Context
 
-MCP server providing 84 tools for the GitLab REST API v4.
+MCP server providing 83 tools for the GitLab REST API v4.
 
 ## Architecture
 
@@ -107,5 +107,5 @@ Prompts follow the resources pattern: prompt content lives as `.md` files in `sr
 
 ## Known Limitations / Future Work
 
-- 84 tools in one server file (exceeds 5-15 guideline). Consider splitting by category in a future refactor.
+- 83 tools in one server file (exceeds 5-15 guideline). Consider splitting by category in a future refactor.
 - Errors are returned as successful tool results with `{"error": ...}` (soft-error pattern). Callers must inspect JSON content.

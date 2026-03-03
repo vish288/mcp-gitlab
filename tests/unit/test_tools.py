@@ -1207,27 +1207,6 @@ class TestMRApprovalsAndMetadata:
         assert parsed["approvals_required"] == 2
         assert len(parsed["approved_by"]) == 1
 
-    async def test_list_mr_reviewers(self, tool_client):
-        client, router = tool_client
-        router.get("/projects/123/merge_requests/1").mock(
-            return_value=Response(
-                200,
-                json={
-                    "iid": 1,
-                    "reviewers": [
-                        {"id": 10, "username": "reviewer1"},
-                        {"id": 20, "username": "reviewer2"},
-                    ],
-                },
-            )
-        )
-        result = await client.call_tool(
-            "gitlab_list_mr_reviewers", {"project_id": "123", "mr_iid": 1}
-        )
-        parsed = _parse(result)
-        assert len(parsed) == 2
-        assert parsed[0]["username"] == "reviewer1"
-
     async def test_list_mr_pipelines(self, tool_client):
         client, router = tool_client
         router.get("/projects/123/merge_requests/1/pipelines").mock(
