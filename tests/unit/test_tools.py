@@ -271,6 +271,7 @@ class TestPipelines:
             "status": "success",
             "ref": "main",
             "sha": "abc123",
+            "failure_reason": "config_error",
             "web_url": "https://gitlab.example.com/pipelines/200",
             "user": {"id": 1, "name": "dev", "avatar_url": "https://example.com/avatar.png"},
             "detailed_status": {"icon": "status_success", "text": "passed"},
@@ -284,6 +285,7 @@ class TestPipelines:
             "stage": "build",
             "status": "success",
             "ref": "main",
+            "failure_reason": "script_failure",
             "web_url": "https://gitlab.example.com/jobs/10",
             "runner": {"id": 1, "description": "shared-runner"},
             "artifacts": [{"filename": "out.zip"}],
@@ -309,6 +311,7 @@ class TestPipelines:
         assert "yaml_errors" not in parsed
         assert "before_sha" not in parsed
         assert parsed["id"] == 200
+        assert parsed["failure_reason"] == "config_error"
         assert parsed["web_url"] == "https://gitlab.example.com/pipelines/200"
         # Job: extra keys stripped
         job = parsed["jobs"][0]
@@ -319,6 +322,7 @@ class TestPipelines:
         assert "project" not in job
         assert job["id"] == 10
         assert job["name"] == "build"
+        assert job["failure_reason"] == "script_failure"
         assert job["web_url"] == "https://gitlab.example.com/jobs/10"
 
     async def test_slim_false_returns_full_response(self, tool_client):
