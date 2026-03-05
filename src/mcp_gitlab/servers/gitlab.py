@@ -93,6 +93,7 @@ _PIPELINE_KEYS = (
     "finished_at",
     "duration",
     "queued_duration",
+    "failure_reason",
     "web_url",
     "name",
 )
@@ -1627,7 +1628,7 @@ async def gitlab_create_pipeline(
     try:
         _check_write(ctx)
         data = await _get_client(ctx).create_pipeline(project_id, ref, variables)
-        return _ok(data)
+        return _ok(_slim_pipeline(data))
     except Exception as e:
         return _err(e)
 
@@ -1645,7 +1646,7 @@ async def gitlab_retry_pipeline(
     try:
         _check_write(ctx)
         data = await _get_client(ctx).retry_pipeline(project_id, pipeline_id)
-        return _ok(data)
+        return _ok(_slim_pipeline(data))
     except Exception as e:
         return _err(e)
 
@@ -1663,7 +1664,7 @@ async def gitlab_cancel_pipeline(
     try:
         _check_write(ctx)
         data = await _get_client(ctx).cancel_pipeline(project_id, pipeline_id)
-        return _ok(data)
+        return _ok(_slim_pipeline(data))
     except Exception as e:
         return _err(e)
 
@@ -1686,7 +1687,7 @@ async def gitlab_retry_job(
     try:
         _check_write(ctx)
         data = await _get_client(ctx).retry_job(project_id, job_id)
-        return _ok(data)
+        return _ok(_slim_job(data))
     except Exception as e:
         return _err(e)
 
@@ -1708,7 +1709,7 @@ async def gitlab_play_job(
     try:
         _check_write(ctx)
         data = await _get_client(ctx).play_job(project_id, job_id, variables)
-        return _ok(data)
+        return _ok(_slim_job(data))
     except Exception as e:
         return _err(e)
 
@@ -1726,7 +1727,7 @@ async def gitlab_cancel_job(
     try:
         _check_write(ctx)
         data = await _get_client(ctx).cancel_job(project_id, job_id)
-        return _ok(data)
+        return _ok(_slim_job(data))
     except Exception as e:
         return _err(e)
 
