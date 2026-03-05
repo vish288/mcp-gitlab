@@ -105,6 +105,19 @@ Prompts follow the resources pattern: prompt content lives as `.md` files in `sr
 - `setup_branch_protection` — Branch protection setup (tags: gitlab, settings)
 - `triage_issues` — Issue triage workflow (tags: gitlab, issues)
 
+## Documentation Freshness (MANDATORY)
+
+When any changeset adds, removes, or modifies tools, resources, or prompts, ALL documentation files MUST be updated in the same commit:
+
+- `README.md` — tool count in heading + intro, tool table, full tool reference, usage examples, permissions table
+- `llms.txt` — tool count in tagline and documentation link
+- `llms-full.txt` — tool count in tagline, documentation link, full tool reference section
+- `AGENTS.md` — tool count in intro, tool categories list
+- `GEMINI.md` — tool count in intro, tool categories, common workflows
+- `server.json` — description field (<=100 chars)
+
+Checklist: verify tool count matches actual registered tools, verify category list is complete, verify new tools appear in correct sections with parameters and annotations.
+
 ## Known Limitations / Future Work
 
 - 83 tools in one server file (exceeds 5-15 guideline). Consider splitting by category in a future refactor.
