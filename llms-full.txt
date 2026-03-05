@@ -148,7 +148,7 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | `gitlab_approve_mr` | Approve a merge request (optionally with SHA safety check) |
 | `gitlab_unapprove_mr` | Remove current user's approval from a merge request |
 | `gitlab_get_mr_approvals` | Get approval state (approvers, remaining approvals, rules) |
-| `gitlab_list_mr_pipelines` | List pipelines associated with a merge request |
+| `gitlab_list_mr_pipelines` | List pipelines for a merge request. Pass `slim=false` for full API response |
 | `gitlab_list_mr_commits` | List commits included in a merge request |
 | `gitlab_subscribe_mr` | Subscribe to merge request notifications |
 | `gitlab_unsubscribe_mr` | Unsubscribe from merge request notifications |
@@ -177,8 +177,8 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 
 | Tool | Description |
 |------|-------------|
-| `gitlab_list_pipelines` | List pipelines for a project (id, status, ref, source, created_at) |
-| `gitlab_get_pipeline` | Get pipeline details, optionally with jobs |
+| `gitlab_list_pipelines` | List pipelines for a project. Returns id, status, ref, source, timing, web_url. Pass `slim=false` for full API response |
+| `gitlab_get_pipeline` | Get pipeline details, optionally with jobs. Returns slim fields by default; pass `slim=false` for full response |
 | `gitlab_create_pipeline` | Create (trigger) a new pipeline |
 | `gitlab_retry_pipeline` | Retry all failed jobs in a pipeline |
 | `gitlab_cancel_pipeline` | Cancel a running pipeline |

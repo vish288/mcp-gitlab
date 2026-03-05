@@ -264,6 +264,63 @@ class TestPipelines:
         assert parsed["id"] == 100
         assert len(parsed["jobs"]) == 1
 
+    async def test_slim_pipeline_strips_extra_keys(self, tool_client):
+        client, router = tool_client
+        full_pipeline = {
+            "id": 200,
+            "status": "success",
+            "ref": "main",
+            "sha": "abc123",
+            "web_url": "https://gitlab.example.com/pipelines/200",
+            "user": {"id": 1, "name": "dev", "avatar_url": "https://example.com/avatar.png"},
+            "detailed_status": {"icon": "status_success", "text": "passed"},
+            "coverage": "85.5",
+            "yaml_errors": None,
+            "before_sha": "000000",
+        }
+        full_job = {
+            "id": 10,
+            "name": "build",
+            "stage": "build",
+            "status": "success",
+            "ref": "main",
+            "web_url": "https://gitlab.example.com/jobs/10",
+            "runner": {"id": 1, "description": "shared-runner"},
+            "artifacts": [{"filename": "out.zip"}],
+            "commit": {"id": "abc123", "message": "fix"},
+            "pipeline": {"id": 200, "status": "success"},
+            "project": {"id": 123},
+        }
+        router.get("/projects/123/pipelines/200").mock(
+            return_value=Response(200, json=full_pipeline)
+        )
+        router.get("/projects/123/pipelines/200/jobs").mock(
+            return_value=Response(200, json=[full_job])
+        )
+        result = await client.call_tool(
+            "gitlab_get_pipeline",
+            {"project_id": "123", "pipeline_id": 200, "include_jobs": True},
+        )
+        parsed = _parse(result)
+        # Pipeline: extra keys stripped
+        assert "user" not in parsed
+        assert "detailed_status" not in parsed
+        assert "coverage" not in parsed
+        assert "yaml_errors" not in parsed
+        assert "before_sha" not in parsed
+        assert parsed["id"] == 200
+        assert parsed["web_url"] == "https://gitlab.example.com/pipelines/200"
+        # Job: extra keys stripped
+        job = parsed["jobs"][0]
+        assert "runner" not in job
+        assert "artifacts" not in job
+        assert "commit" not in job
+        assert "pipeline" not in job
+        assert "project" not in job
+        assert job["id"] == 10
+        assert job["name"] == "build"
+        assert job["web_url"] == "https://gitlab.example.com/jobs/10"
+
 
 # ═══════════════════════════════════════════════════════
 # Issues
