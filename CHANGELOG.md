@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.0] - 2026-03-05
+
+### Features
+- feat: slim pipeline and job responses (#44) (f52a665)
+
+
 ## [0.7.1] - 2026-03-05
 
 ### Documentation
