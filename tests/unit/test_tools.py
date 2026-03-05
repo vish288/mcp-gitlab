@@ -321,6 +321,40 @@ class TestPipelines:
         assert job["name"] == "build"
         assert job["web_url"] == "https://gitlab.example.com/jobs/10"
 
+    async def test_slim_false_returns_full_response(self, tool_client):
+        client, router = tool_client
+        full_pipeline = {
+            "id": 300,
+            "status": "success",
+            "ref": "main",
+            "user": {"id": 1, "name": "dev"},
+            "detailed_status": {"icon": "status_success"},
+            "coverage": "90.0",
+        }
+        full_job = {
+            "id": 20,
+            "name": "test",
+            "status": "success",
+            "runner": {"id": 5, "description": "shared"},
+            "artifacts": [{"filename": "report.xml"}],
+        }
+        router.get("/projects/123/pipelines/300").mock(
+            return_value=Response(200, json=full_pipeline)
+        )
+        router.get("/projects/123/pipelines/300/jobs").mock(
+            return_value=Response(200, json=[full_job])
+        )
+        result = await client.call_tool(
+            "gitlab_get_pipeline",
+            {"project_id": "123", "pipeline_id": 300, "include_jobs": True, "slim": False},
+        )
+        parsed = _parse(result)
+        assert parsed["user"] == {"id": 1, "name": "dev"}
+        assert parsed["detailed_status"] == {"icon": "status_success"}
+        assert parsed["coverage"] == "90.0"
+        assert parsed["jobs"][0]["runner"] == {"id": 5, "description": "shared"}
+        assert parsed["jobs"][0]["artifacts"] == [{"filename": "report.xml"}]
+
 
 # ═══════════════════════════════════════════════════════
 # Issues
