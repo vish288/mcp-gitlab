@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.9.0] - 2026-06-16
+
+### Features
+- feat: accept full GitLab URLs in project_id and group_id params (3ef4c5a)
+
+### Documentation
+- docs: front-load actions and return values in tool descriptions (d36cde3)
+
+### Chores
+- chore(deps): bump python-dotenv from 1.2.1 to 1.2.2 (2637e5a)
+- chore(deps): bump authlib from 1.6.8 to 1.6.12 (5ae17fc)
+- chore(deps): bump cryptography from 46.0.5 to 48.0.1 (c465c53)
+- chore(deps-dev): bump pytest from 9.0.2 to 9.0.3 (8ae0d3b)
+- chore(deps): bump starlette from 0.52.1 to 1.3.1 (9701556)
+- chore(deps): bump idna from 3.11 to 3.15 (472ce05)
+- chore(deps): bump fastmcp from 3.0.1 to 3.2.0 (500c1b7)
+- chore(ci): bump codecov/codecov-action from 5 to 7 (6337fa0)
+- chore(deps): bump pyjwt from 2.12.0 to 2.13.0 (5749f9a)
+- chore(deps): bump pygments from 2.19.2 to 2.20.0 (273640e)
+- chore(deps): bump python-multipart from 0.0.22 to 0.0.31 (3a9fef7)
+- chore(ci): bump softprops/action-gh-release from 2 to 3 (194e2c2)
+- chore(deps): bump pyjwt from 2.11.0 to 2.12.0 (9c9ddd3)
+
+### Other
+
+
 ## [0.8.0] - 2026-03-05
 
 ### Features
