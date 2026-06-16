@@ -58,7 +58,7 @@ Every tool MUST have `annotations={}` with at minimum `readOnlyHint`.
 
 ## Tool Categories
 
-Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Requests (16), MR Notes (6), MR Discussions (4), Pipelines (5), Jobs (4), Tags (4), Releases (5), CI/CD Variables (8), Issues (5)
+Projects (4), Approvals (10), Groups (6), Branches (3), Commits (4), Merge Requests (15), MR Notes (6), MR Discussions (4), Pipelines (5), Jobs (4), Tags (4), Releases (5), CI/CD Variables (8), Issues (5)
 
 ## Environment Variables
 
@@ -86,8 +86,8 @@ gh workflow run release.yml -f bump=minor -f dry_run=true
 
 ### What happens
 
-1. `release.yml` (workflow_dispatch) — bumps `pyproject.toml` version, regenerates `uv.lock`, generates CHANGELOG.md, creates release commit + tag via GitHub API
-2. `publish.yml` (triggered by `v*` tag push) — builds wheel, publishes to PyPI, creates GitHub Release with auto-generated notes
+1. `release.yml` (workflow_dispatch) — bumps the version in `pyproject.toml`, `llms.txt`, `llms-full.txt`, `server.json`, `gemini-extension.json`; regenerates `uv.lock`; prepends a CHANGELOG.md entry; creates the release commit + tag via the GitHub API
+2. `publish.yml` (triggered by `v*` tag push) — builds wheel, publishes to PyPI, creates GitHub Release with auto-generated notes, then publishes to the MCP Registry
 
 ### Rules
 - Never edit `pyproject.toml` version directly — the workflow owns it
