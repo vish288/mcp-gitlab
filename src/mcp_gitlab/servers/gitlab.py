@@ -169,7 +169,11 @@ async def gitlab_get_project(
     project_id: Annotated[
         str,
         Field(
-            description="Project ID or URL-encoded path (e.g. 'my-group/my-project')", min_length=1
+            description=(
+                "Project ID, URL-encoded path (e.g. 'my-group/my-project'),"
+                " or a full GitLab URL"
+            ),
+            min_length=1,
         ),
     ],
 ) -> str:
@@ -223,7 +227,9 @@ async def gitlab_create_project(
 )
 async def gitlab_delete_project(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
 ) -> str:
     """Delete a GitLab project. This action is irreversible."""
     try:
@@ -240,7 +246,9 @@ async def gitlab_delete_project(
 )
 async def gitlab_update_project_merge_settings(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     only_allow_merge_if_pipeline_succeeds: Annotated[
         bool | None, Field(description="Require passing pipeline")
     ] = None,
@@ -288,7 +296,9 @@ async def gitlab_update_project_merge_settings(
 )
 async def gitlab_get_project_approvals(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
 ) -> str:
     """Get project-level approval configuration."""
     try:
@@ -304,7 +314,9 @@ async def gitlab_get_project_approvals(
 )
 async def gitlab_update_project_approvals(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     approvals_before_merge: Annotated[
         int | None, Field(description="Required approvals count")
     ] = None,
@@ -351,7 +363,9 @@ async def gitlab_update_project_approvals(
 )
 async def gitlab_list_project_approval_rules(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
 ) -> str:
     """List project-level approval rules."""
     try:
@@ -367,7 +381,9 @@ async def gitlab_list_project_approval_rules(
 )
 async def gitlab_create_project_approval_rule(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     name: Annotated[str, Field(description="Rule name", min_length=1)],
     approvals_required: Annotated[int, Field(description="Number of approvals required", ge=0)],
     user_ids: Annotated[list[int] | None, Field(description="User IDs for the rule")] = None,
@@ -396,7 +412,9 @@ async def gitlab_create_project_approval_rule(
 )
 async def gitlab_update_project_approval_rule(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     rule_id: Annotated[int, Field(description="Approval rule ID")],
     name: Annotated[str | None, Field(description="Rule name", min_length=1)] = None,
     approvals_required: Annotated[
@@ -429,7 +447,9 @@ async def gitlab_update_project_approval_rule(
 )
 async def gitlab_delete_project_approval_rule(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     rule_id: Annotated[int, Field(description="Approval rule ID")],
 ) -> str:
     """Delete a project-level approval rule."""
@@ -452,7 +472,9 @@ async def gitlab_delete_project_approval_rule(
 )
 async def gitlab_list_mr_approval_rules(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """List merge request approval rules."""
@@ -469,7 +491,9 @@ async def gitlab_list_mr_approval_rules(
 )
 async def gitlab_create_mr_approval_rule(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     name: Annotated[str, Field(description="Rule name", min_length=1)],
     approvals_required: Annotated[int, Field(description="Number of approvals required", ge=0)],
@@ -499,7 +523,9 @@ async def gitlab_create_mr_approval_rule(
 )
 async def gitlab_update_mr_approval_rule(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     rule_id: Annotated[int, Field(description="Approval rule ID")],
     name: Annotated[str | None, Field(description="Rule name", min_length=1)] = None,
@@ -531,7 +557,9 @@ async def gitlab_update_mr_approval_rule(
 )
 async def gitlab_delete_mr_approval_rule(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     rule_id: Annotated[int, Field(description="Approval rule ID")],
 ) -> str:
@@ -595,7 +623,9 @@ async def gitlab_get_group(
 )
 async def gitlab_share_project_with_group(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     group_id: Annotated[int, Field(description="Group ID to share with")],
     access_level: Annotated[
         str, Field(description="guest, reporter, developer, maintainer, or owner")
@@ -621,7 +651,9 @@ async def gitlab_share_project_with_group(
 )
 async def gitlab_unshare_project_with_group(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     group_id: Annotated[int, Field(description="Group ID to unshare")],
 ) -> str:
     """Remove group sharing from a project."""
@@ -686,7 +718,9 @@ async def gitlab_unshare_group_with_group(
 )
 async def gitlab_list_branches(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     search: Annotated[str | None, Field(description="Filter by branch name")] = None,
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
@@ -711,7 +745,9 @@ async def gitlab_list_branches(
 )
 async def gitlab_create_branch(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     branch_name: Annotated[str, Field(description="New branch name", min_length=1)],
     ref: Annotated[str, Field(description="Source branch or commit SHA", min_length=1)],
 ) -> str:
@@ -730,7 +766,9 @@ async def gitlab_create_branch(
 )
 async def gitlab_delete_branch(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     branch_name: Annotated[str, Field(description="Branch name to delete", min_length=1)],
 ) -> str:
     """Delete a branch."""
@@ -753,7 +791,9 @@ async def gitlab_delete_branch(
 )
 async def gitlab_list_commits(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     ref_name: Annotated[str | None, Field(description="Branch or tag name")] = None,
     since: Annotated[str | None, Field(description="ISO 8601 date, commits after")] = None,
     until: Annotated[str | None, Field(description="ISO 8601 date, commits before")] = None,
@@ -787,7 +827,9 @@ async def gitlab_list_commits(
 )
 async def gitlab_get_commit(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     sha: Annotated[str, Field(description="Commit SHA", min_length=1)],
     include_diff: Annotated[bool, Field(description="Include file diffs")] = False,
 ) -> str:
@@ -809,7 +851,9 @@ async def gitlab_get_commit(
 )
 async def gitlab_create_commit(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     branch: Annotated[str, Field(description="Target branch", min_length=1)],
     commit_message: Annotated[str, Field(description="Commit message", min_length=1)],
     actions: Annotated[
@@ -845,7 +889,9 @@ async def gitlab_create_commit(
 )
 async def gitlab_compare(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     from_ref: Annotated[
         str, Field(description="Source branch/tag/SHA", alias="from", min_length=1)
     ],
@@ -870,7 +916,9 @@ async def gitlab_compare(
 )
 async def gitlab_list_mrs(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     state: Annotated[str | None, Field(description="opened, closed, merged, or all")] = None,
     scope: Annotated[str | None, Field(description="created_by_me, assigned_to_me, or all")] = None,
     source_branch: Annotated[str | None, Field(description="Filter by source branch")] = None,
@@ -910,7 +958,9 @@ async def gitlab_list_mrs(
 )
 async def gitlab_get_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Get merge request details.
@@ -930,7 +980,9 @@ async def gitlab_get_mr(
 )
 async def gitlab_create_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     source_branch: Annotated[str, Field(description="Source branch", min_length=1)],
     target_branch: Annotated[str, Field(description="Target branch", min_length=1)],
     title: Annotated[str, Field(description="MR title", min_length=1)],
@@ -972,7 +1024,9 @@ async def gitlab_create_mr(
 )
 async def gitlab_update_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     title: Annotated[str | None, Field(description="New title")] = None,
     description: Annotated[str | None, Field(description="New description")] = None,
@@ -1017,7 +1071,9 @@ async def gitlab_update_mr(
 )
 async def gitlab_merge_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     squash: Annotated[bool | None, Field(description="Squash commits")] = None,
     delete_source_branch: Annotated[
@@ -1059,7 +1115,9 @@ async def gitlab_merge_mr(
 )
 async def gitlab_merge_mr_sequence(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iids: Annotated[list[int], Field(description="List of MR IIDs to merge in order")],
     squash: Annotated[bool | None, Field(description="Squash commits")] = None,
     delete_source_branch: Annotated[bool | None, Field(description="Delete source branch")] = None,
@@ -1114,7 +1172,9 @@ async def gitlab_merge_mr_sequence(
 )
 async def gitlab_rebase_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     skip_ci: Annotated[bool, Field(description="Skip CI pipeline for rebase")] = False,
 ) -> str:
@@ -1133,7 +1193,9 @@ async def gitlab_rebase_mr(
 )
 async def gitlab_mr_changes(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Get file changes of a merge request. Returns list of diffs with old/new paths and content."""
@@ -1155,7 +1217,9 @@ async def gitlab_mr_changes(
 )
 async def gitlab_list_mr_notes(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     include_system: Annotated[bool, Field(description="Include system-generated notes")] = False,
 ) -> str:
@@ -1175,7 +1239,9 @@ async def gitlab_list_mr_notes(
 )
 async def gitlab_add_mr_note(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     body: Annotated[str, Field(description="Comment body (markdown)", min_length=1)],
     internal: Annotated[
@@ -1197,7 +1263,9 @@ async def gitlab_add_mr_note(
 )
 async def gitlab_delete_mr_note(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID to delete")],
 ) -> str:
@@ -1216,7 +1284,9 @@ async def gitlab_delete_mr_note(
 )
 async def gitlab_update_mr_note(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID to update")],
     body: Annotated[str, Field(description="New note body", min_length=1)],
@@ -1236,7 +1306,9 @@ async def gitlab_update_mr_note(
 )
 async def gitlab_award_emoji(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID")],
     emoji: Annotated[str, Field(description="Emoji name (e.g. thumbsup, 100, eyes)", min_length=1)],
@@ -1256,7 +1328,9 @@ async def gitlab_award_emoji(
 )
 async def gitlab_remove_emoji(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID")],
     award_id: Annotated[int, Field(description="Award emoji ID to remove")],
@@ -1281,7 +1355,9 @@ async def gitlab_remove_emoji(
 )
 async def gitlab_list_mr_discussions(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """List discussions on a merge request.
@@ -1307,7 +1383,9 @@ async def gitlab_list_mr_discussions(
 )
 async def gitlab_create_mr_discussion(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     body: Annotated[str, Field(description="Discussion body (markdown)", min_length=1)],
     base_sha: Annotated[str | None, Field(description="Base commit SHA (from diff_refs)")] = None,
@@ -1371,7 +1449,9 @@ async def gitlab_create_mr_discussion(
 )
 async def gitlab_reply_to_discussion(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     discussion_id: Annotated[str, Field(description="Discussion ID", min_length=1)],
     body: Annotated[str, Field(description="Reply body (markdown)", min_length=1)],
@@ -1391,7 +1471,9 @@ async def gitlab_reply_to_discussion(
 )
 async def gitlab_resolve_discussion(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     discussion_id: Annotated[str, Field(description="Discussion ID", min_length=1)],
     resolved: Annotated[bool, Field(description="True to resolve, False to unresolve")],
@@ -1418,7 +1500,9 @@ async def gitlab_resolve_discussion(
 )
 async def gitlab_approve_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     sha: Annotated[
         str | None,
@@ -1440,7 +1524,9 @@ async def gitlab_approve_mr(
 )
 async def gitlab_unapprove_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Remove the current user's approval from a merge request."""
@@ -1458,7 +1544,9 @@ async def gitlab_unapprove_mr(
 )
 async def gitlab_get_mr_approvals(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Get approval state for a merge request (approvers, remaining approvals, rules)."""
@@ -1475,7 +1563,9 @@ async def gitlab_get_mr_approvals(
 )
 async def gitlab_list_mr_pipelines(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
 ) -> str:
@@ -1493,7 +1583,9 @@ async def gitlab_list_mr_pipelines(
 )
 async def gitlab_list_mr_commits(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """List commits included in a merge request."""
@@ -1510,7 +1602,9 @@ async def gitlab_list_mr_commits(
 )
 async def gitlab_subscribe_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Subscribe to notifications for a merge request."""
@@ -1528,7 +1622,9 @@ async def gitlab_subscribe_mr(
 )
 async def gitlab_unsubscribe_mr(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Unsubscribe from notifications for a merge request."""
@@ -1551,7 +1647,9 @@ async def gitlab_unsubscribe_mr(
 )
 async def gitlab_list_pipelines(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     ref: Annotated[str | None, Field(description="Filter by branch/tag")] = None,
     status: Annotated[
         str | None,
@@ -1588,7 +1686,9 @@ async def gitlab_list_pipelines(
 )
 async def gitlab_get_pipeline(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
     include_jobs: Annotated[bool, Field(description="Include pipeline jobs")] = False,
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
@@ -1617,7 +1717,9 @@ async def gitlab_get_pipeline(
 )
 async def gitlab_create_pipeline(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     ref: Annotated[str, Field(description="Branch or tag to run pipeline on", min_length=1)],
     variables: Annotated[
         list[dict[str, str]] | None,
@@ -1639,7 +1741,9 @@ async def gitlab_create_pipeline(
 )
 async def gitlab_retry_pipeline(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
 ) -> str:
     """Retry all failed jobs in a pipeline."""
@@ -1657,7 +1761,9 @@ async def gitlab_retry_pipeline(
 )
 async def gitlab_cancel_pipeline(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
 ) -> str:
     """Cancel a running pipeline."""
@@ -1680,7 +1786,9 @@ async def gitlab_cancel_pipeline(
 )
 async def gitlab_retry_job(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     job_id: Annotated[int, Field(description="Job ID")],
 ) -> str:
     """Retry a failed job."""
@@ -1698,7 +1806,9 @@ async def gitlab_retry_job(
 )
 async def gitlab_play_job(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     job_id: Annotated[int, Field(description="Job ID")],
     variables: Annotated[
         list[dict[str, str]] | None,
@@ -1720,7 +1830,9 @@ async def gitlab_play_job(
 )
 async def gitlab_cancel_job(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     job_id: Annotated[int, Field(description="Job ID")],
 ) -> str:
     """Cancel a running job."""
@@ -1738,7 +1850,9 @@ async def gitlab_cancel_job(
 )
 async def gitlab_get_job_log(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     job_id: Annotated[int, Field(description="Job ID")],
     tail_lines: Annotated[int, Field(description="Number of lines from the end to return")] = 200,
 ) -> str:
@@ -1770,7 +1884,9 @@ async def gitlab_get_job_log(
 )
 async def gitlab_list_tags(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     search: Annotated[str | None, Field(description="Filter by tag name")] = None,
     order_by: Annotated[str | None, Field(description="name, updated, or version")] = None,
     sort: Annotated[str | None, Field(description="asc or desc")] = None,
@@ -1801,7 +1917,9 @@ async def gitlab_list_tags(
 )
 async def gitlab_get_tag(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name", min_length=1)],
 ) -> str:
     """Get details of a specific tag."""
@@ -1818,7 +1936,9 @@ async def gitlab_get_tag(
 )
 async def gitlab_create_tag(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name", min_length=1)],
     ref: Annotated[str, Field(description="Branch or commit SHA to tag", min_length=1)],
     message: Annotated[str | None, Field(description="Annotated tag message")] = None,
@@ -1841,7 +1961,9 @@ async def gitlab_create_tag(
 )
 async def gitlab_delete_tag(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name to delete", min_length=1)],
 ) -> str:
     """Delete a tag."""
@@ -1864,7 +1986,9 @@ async def gitlab_delete_tag(
 )
 async def gitlab_list_releases(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
@@ -1886,7 +2010,9 @@ async def gitlab_list_releases(
 )
 async def gitlab_get_release(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name of the release", min_length=1)],
 ) -> str:
     """Get details of a specific release."""
@@ -1903,7 +2029,9 @@ async def gitlab_get_release(
 )
 async def gitlab_create_release(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name for the release", min_length=1)],
     name: Annotated[str | None, Field(description="Release name")] = None,
     description: Annotated[str | None, Field(description="Release description (markdown)")] = None,
@@ -1940,7 +2068,9 @@ async def gitlab_create_release(
 )
 async def gitlab_update_release(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name of the release", min_length=1)],
     name: Annotated[str | None, Field(description="New release name")] = None,
     description: Annotated[str | None, Field(description="New release description")] = None,
@@ -1968,7 +2098,9 @@ async def gitlab_update_release(
 )
 async def gitlab_delete_release(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     tag_name: Annotated[str, Field(description="Tag name of the release", min_length=1)],
 ) -> str:
     """Delete a release (does not delete the tag)."""
@@ -1991,7 +2123,9 @@ async def gitlab_delete_release(
 )
 async def gitlab_list_variables(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
 ) -> str:
     """List project CI/CD variables. Masked values shown as '***MASKED***'."""
     try:
@@ -2010,7 +2144,9 @@ async def gitlab_list_variables(
 )
 async def gitlab_create_variable(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
     value: Annotated[str, Field(description="Variable value")],
     variable_type: Annotated[str | None, Field(description="env_var or file")] = None,
@@ -2052,7 +2188,9 @@ async def gitlab_create_variable(
 )
 async def gitlab_update_variable(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
     value: Annotated[str, Field(description="New variable value")],
     variable_type: Annotated[str | None, Field(description="env_var or file")] = None,
@@ -2090,7 +2228,9 @@ async def gitlab_update_variable(
 )
 async def gitlab_delete_variable(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
     environment_scope: Annotated[str | None, Field(description="Environment scope filter")] = None,
 ) -> str:
@@ -2114,7 +2254,7 @@ async def gitlab_delete_variable(
 )
 async def gitlab_list_group_variables(
     ctx: Context,
-    group_id: Annotated[str, Field(description="Group ID or path", min_length=1)],
+    group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
 ) -> str:
     """List group CI/CD variables. Masked values shown as '***MASKED***'."""
     try:
@@ -2133,7 +2273,7 @@ async def gitlab_list_group_variables(
 )
 async def gitlab_create_group_variable(
     ctx: Context,
-    group_id: Annotated[str, Field(description="Group ID or path", min_length=1)],
+    group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
     value: Annotated[str, Field(description="Variable value")],
     variable_type: Annotated[str | None, Field(description="env_var or file")] = None,
@@ -2171,7 +2311,7 @@ async def gitlab_create_group_variable(
 )
 async def gitlab_update_group_variable(
     ctx: Context,
-    group_id: Annotated[str, Field(description="Group ID or path", min_length=1)],
+    group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
     value: Annotated[str, Field(description="New variable value")],
     variable_type: Annotated[str | None, Field(description="env_var or file")] = None,
@@ -2206,7 +2346,7 @@ async def gitlab_update_group_variable(
 )
 async def gitlab_delete_group_variable(
     ctx: Context,
-    group_id: Annotated[str, Field(description="Group ID or path", min_length=1)],
+    group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
 ) -> str:
     """Delete a group CI/CD variable."""
@@ -2229,7 +2369,9 @@ async def gitlab_delete_group_variable(
 )
 async def gitlab_list_issues(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     state: Annotated[str | None, Field(description="opened, closed, or all")] = None,
     labels: Annotated[str | None, Field(description="Comma-separated labels")] = None,
     search: Annotated[str | None, Field(description="Search in title/description")] = None,
@@ -2263,7 +2405,9 @@ async def gitlab_list_issues(
 )
 async def gitlab_get_issue(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     issue_iid: Annotated[int, Field(description="Issue IID")],
 ) -> str:
     """Get details of a specific issue."""
@@ -2280,7 +2424,9 @@ async def gitlab_get_issue(
 )
 async def gitlab_create_issue(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     title: Annotated[str, Field(description="Issue title", min_length=1)],
     description: Annotated[str | None, Field(description="Issue description (markdown)")] = None,
     labels: Annotated[str | None, Field(description="Comma-separated labels")] = None,
@@ -2317,7 +2463,9 @@ async def gitlab_create_issue(
 )
 async def gitlab_update_issue(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     issue_iid: Annotated[int, Field(description="Issue IID")],
     title: Annotated[str | None, Field(description="New title")] = None,
     description: Annotated[str | None, Field(description="New description")] = None,
@@ -2354,7 +2502,9 @@ async def gitlab_update_issue(
 )
 async def gitlab_add_issue_comment(
     ctx: Context,
-    project_id: Annotated[str, Field(description="Project ID or path", min_length=1)],
+    project_id: Annotated[
+        str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
+    ],
     issue_iid: Annotated[int, Field(description="Issue IID")],
     body: Annotated[str, Field(description="Comment body (markdown)", min_length=1)],
 ) -> str:

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import httpx
 
 from .config import GitLabConfig
 from .exceptions import GitLabApiError, GitLabAuthError, GitLabNotFoundError
+
+# Matches a GitLab project URL; captures the namespace/project path before any
+# `/-/...` suffix (merge_requests, pipelines, issues, etc.).
+_GITLAB_PROJECT_URL_RE = re.compile(r"https?://[^/]+/(.+?)(?:/-/.*)?/?$")
 
 
 class GitLabClient:
@@ -35,9 +40,18 @@ class GitLabClient:
 
     @staticmethod
     def _encode_id(project_id: str | int) -> str:
-        """Encode a project/group ID. Numeric IDs pass through; paths are URL-encoded."""
+        """Encode a project/group ID.
+
+        Numeric IDs pass through, paths are URL-encoded, and full GitLab URLs
+        (e.g. ``https://gitlab.com/group/project/-/merge_requests/42``) are
+        reduced to the project path before encoding.
+        """
         if isinstance(project_id, int):
             return str(project_id)
+        if project_id.startswith(("http://", "https://")):
+            m = _GITLAB_PROJECT_URL_RE.match(project_id)
+            if m:
+                project_id = unquote(m.group(1))
         try:
             return str(int(project_id))
         except ValueError:
