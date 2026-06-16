@@ -111,7 +111,7 @@ These accept any of the following token types:
 | Windsurf | Yes | `~/.codeium/windsurf/mcp_config.json` |
 | Any MCP client | Yes | stdio or HTTP transport |
 
-## Tools (84)
+## Tools (83)
 
 | Category | Count | Tools |
 |----------|-------|-------|
