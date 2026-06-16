@@ -27,6 +27,48 @@ class TestEncodeId:
     def test_path(self):
         assert GitLabClient._encode_id("my-group/my-project") == "my-group%2Fmy-project"
 
+    def test_project_url(self):
+        assert (
+            GitLabClient._encode_id("https://gitlab.com/my-group/my-project")
+            == "my-group%2Fmy-project"
+        )
+
+    def test_project_url_trailing_slash(self):
+        assert (
+            GitLabClient._encode_id("https://gitlab.com/my-group/my-project/")
+            == "my-group%2Fmy-project"
+        )
+
+    def test_mr_url(self):
+        assert (
+            GitLabClient._encode_id(
+                "https://gitlab.com/my-group/my-project/-/merge_requests/42"
+            )
+            == "my-group%2Fmy-project"
+        )
+
+    def test_pipeline_url(self):
+        assert (
+            GitLabClient._encode_id(
+                "https://gitlab.example.com/g/sub/proj/-/pipelines/999"
+            )
+            == "g%2Fsub%2Fproj"
+        )
+
+    def test_issue_url_nested_group(self):
+        assert (
+            GitLabClient._encode_id(
+                "https://gitlab.example.com/top/mid/proj/-/issues/7"
+            )
+            == "top%2Fmid%2Fproj"
+        )
+
+    def test_self_hosted_with_port(self):
+        assert (
+            GitLabClient._encode_id("http://gitlab.local:8080/g/p")
+            == "g%2Fp"
+        )
+
 
 class TestRequest:
     @pytest.mark.asyncio
