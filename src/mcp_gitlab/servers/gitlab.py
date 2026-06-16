@@ -170,8 +170,7 @@ async def gitlab_get_project(
         str,
         Field(
             description=(
-                "Project ID, URL-encoded path (e.g. 'my-group/my-project'),"
-                " or a full GitLab URL"
+                "Project ID, URL-encoded path (e.g. 'my-group/my-project'), or a full GitLab URL"
             ),
             min_length=1,
         ),
