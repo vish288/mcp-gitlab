@@ -1,11 +1,13 @@
 {
   "name": "mcp-gitlab",
-  "version": "0.9.0",
-  "description": "MCP server for GitLab API — projects, MRs, pipelines, CI/CD variables, approvals, and more",
+  "version": "0.9.1",
+  "description": "MCP server for GitLab API \u2014 projects, MRs, pipelines, CI/CD variables, approvals, and more",
   "mcpServers": {
     "mcp-gitlab": {
       "command": "uvx",
-      "args": ["mcp-gitlab"]
+      "args": [
+        "mcp-gitlab"
+      ]
     }
   },
   "settings": [

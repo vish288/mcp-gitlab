@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.9.1] - 2026-06-16
+
+### Documentation
+- docs: fix doc drifts and bump server.json/gemini-extension.json in release workflow (458c169)
+
+
 ## [0.9.0] - 2026-06-16
 
 ### Features
