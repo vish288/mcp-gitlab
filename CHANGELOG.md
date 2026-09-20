@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.10.1] - 2026-09-20
+
+### Bug Fixes
+- fix: stop link checks reddening unrelated PRs, and unify project-URL parsing (611d5ae)
+
+
 ## [0.10.0] - 2026-09-20
 
 ### Bug Fixes
