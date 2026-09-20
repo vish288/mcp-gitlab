@@ -119,13 +119,13 @@ class GitLabClient:
         if resp.status_code == 204 or not resp.content:
             return None
 
-        if raw:
-            return resp.text
-
         content_type = resp.headers.get("content-type", "")
         if "text/html" in content_type:
             msg = "Unexpected HTML response — check URL and authentication"
             raise GitLabApiError(resp.status_code, msg, resp.text[:500])
+
+        if raw:
+            return resp.text
 
         try:
             return resp.json()
