@@ -162,6 +162,30 @@ class TestBranches:
         parsed = _parse(result)
         assert parsed["count"] == 2
         assert parsed["items"][0]["name"] == "main"
+        assert parsed["has_more"] is False
+        assert parsed["next_page"] is None
+
+    async def test_truncated_list_says_so(self, tool_client):
+        """A capped page must announce itself and say where to resume.
+
+        Without this the caller cannot tell a complete list from a cut one.
+        """
+        client, router = tool_client
+        router.get("/projects/123/repository/branches").mock(
+            return_value=Response(200, json=[{"name": "main"}], headers={"X-Next-Page": "2"})
+        )
+        result = await client.call_tool("gitlab_list_branches", {"project_id": "123"})
+        parsed = _parse(result)
+        assert parsed["has_more"] is True
+        assert parsed["next_page"] == 2
+
+    async def test_page_argument_is_sent_upstream(self, tool_client):
+        client, router = tool_client
+        route = router.get("/projects/123/repository/branches").mock(
+            return_value=Response(200, json=[])
+        )
+        await client.call_tool("gitlab_list_branches", {"project_id": "123", "page": 3})
+        assert route.calls.last.request.url.params["page"] == "3"
 
     async def test_create_branch(self, tool_client):
         client, router = tool_client
