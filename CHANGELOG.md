@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.0] - 2026-09-20
+
+### Bug Fixes
+- fix: surface GitLab paging headers so list tools stop truncating silently (d68b3ee)
+
+### Refactoring
+- refactor: share response-body decoding between both request paths (ba79996)
+
+
 ## [0.9.7] - 2026-09-20
 
 ### Bug Fixes
