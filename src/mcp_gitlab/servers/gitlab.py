@@ -1325,6 +1325,11 @@ async def gitlab_list_mr_notes(
     """List notes (comments) on a merge request.
 
     Returns id, body, author, created_at, and system flag per note.
+
+    `count` is the number of notes left after the system-note filter, while
+    `has_more` describes the unfiltered server page. A page of nothing but
+    system notes therefore returns count 0 with has_more true -- keep following
+    next_page rather than concluding the MR has no comments.
     """
     try:
         data, next_page = await _get_client(ctx).list_mr_notes(project_id, mr_iid, page)
@@ -1472,6 +1477,9 @@ async def gitlab_list_mr_discussions(
     """List discussions on a merge request.
 
     Returns discussion threads with notes, excluding system-only threads.
+
+    `count` is post-filter while `has_more` describes the unfiltered server
+    page, so a page of only system threads returns count 0 with has_more true.
     """
     try:
         data, next_page = await _get_client(ctx).list_mr_discussions(project_id, mr_iid, page)
