@@ -17,6 +17,25 @@ from .exceptions import GitLabApiError, GitLabAuthError, GitLabNotFoundError
 _GITLAB_PROJECT_URL_RE = re.compile(r"https?://[^/]+/(.+?)(?:/-/.*)?/?$")
 
 
+def parse_project_path(value: str) -> str:
+    """Reduce a GitLab project URL to its ``namespace/project`` path.
+
+    Values that are not URLs are returned unchanged, so this is safe to call on
+    a raw project id or path.
+
+    Single source of truth for this parse. It previously existed twice, and the
+    copies disagreed: the server-side regex omitted the trailing ``/?``, so
+    ``https://gitlab.com/g/p/`` yielded ``g/p/`` there and ``g/p`` here. The
+    stray slash survived into the tool call, URL-encoded to ``g%2Fp%2F`` and
+    404'd -- a trailing slash in a pasted URL was enough to make a project look
+    missing.
+    """
+    if not value.startswith(("http://", "https://")):
+        return value
+    m = _GITLAB_PROJECT_URL_RE.match(value)
+    return unquote(m.group(1)) if m else value
+
+
 class GitLabClient:
     """Async HTTP client for the GitLab REST API v4."""
 
@@ -48,10 +67,7 @@ class GitLabClient:
         """
         if isinstance(project_id, int):
             return str(project_id)
-        if project_id.startswith(("http://", "https://")):
-            m = _GITLAB_PROJECT_URL_RE.match(project_id)
-            if m:
-                project_id = unquote(m.group(1))
+        project_id = parse_project_path(project_id)
         try:
             return str(int(project_id))
         except ValueError:
