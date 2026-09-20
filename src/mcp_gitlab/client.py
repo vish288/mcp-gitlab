@@ -82,7 +82,24 @@ class GitLabClient:
         resp = await self._client.request(method, path, **kwargs)
 
         self._raise_for_status(resp)
+        return self._parse_body(resp, raw=raw)
 
+    @staticmethod
+    def _raise_for_status(resp: httpx.Response) -> None:
+        if resp.status_code in (401, 403):
+            raise GitLabAuthError(resp.status_code, resp.text)
+        if resp.status_code == 404:
+            raise GitLabNotFoundError(resp.text)
+        if not resp.is_success:
+            raise GitLabApiError(resp.status_code, resp.reason_phrase or "", resp.text)
+
+    @staticmethod
+    def _parse_body(resp: httpx.Response, *, raw: bool = False) -> Any:
+        """Decode a successful response body. None for 204/empty.
+
+        Shared by every request path so the HTML guard and the JSON error
+        wording cannot drift between them.
+        """
         if resp.status_code == 204 or not resp.content:
             return None
 
@@ -103,15 +120,6 @@ class GitLabClient:
                 resp.text[:500],
             ) from e
 
-    @staticmethod
-    def _raise_for_status(resp: httpx.Response) -> None:
-        if resp.status_code in (401, 403):
-            raise GitLabAuthError(resp.status_code, resp.text)
-        if resp.status_code == 404:
-            raise GitLabNotFoundError(resp.text)
-        if not resp.is_success:
-            raise GitLabApiError(resp.status_code, resp.reason_phrase or "", resp.text)
-
     async def get(
         self, path: str, params: dict[str, Any] | None = None, *, raw: bool = False
     ) -> Any:
@@ -127,28 +135,12 @@ class GitLabClient:
         every list tool silently truncated with no way to ask for the rest.
         ``next_page`` is None on the last page.
         """
-        resp = await self._client.request("GET", path, params=params, headers={})
+        resp = await self._client.request("GET", path, params=params)
         self._raise_for_status(resp)
 
-        if resp.status_code == 204 or not resp.content:
-            return [], None
-
-        content_type = resp.headers.get("content-type", "")
-        if "text/html" in content_type:
-            msg = "Unexpected HTML response — check URL and authentication"
-            raise GitLabApiError(resp.status_code, msg, resp.text[:500])
-
-        try:
-            items = resp.json()
-        except json.JSONDecodeError as e:
-            raise GitLabApiError(
-                resp.status_code,
-                f"JSON parse error: {e}",
-                resp.text[:500],
-            ) from e
-
+        items = self._parse_body(resp)
         next_page = resp.headers.get("x-next-page") or None
-        return items, int(next_page) if next_page else None
+        return (items or []), int(next_page) if next_page else None
 
     async def post(self, path: str, json_data: Any = None, **kwargs: Any) -> Any:
         return await self._request("POST", path, json_data=json_data, **kwargs)
