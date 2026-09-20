@@ -81,12 +81,7 @@ class GitLabClient:
 
         resp = await self._client.request(method, path, **kwargs)
 
-        if resp.status_code in (401, 403):
-            raise GitLabAuthError(resp.status_code, resp.text)
-        if resp.status_code == 404:
-            raise GitLabNotFoundError(resp.text)
-        if not resp.is_success:
-            raise GitLabApiError(resp.status_code, resp.reason_phrase or "", resp.text)
+        self._raise_for_status(resp)
 
         if resp.status_code == 204 or not resp.content:
             return None
@@ -108,10 +103,52 @@ class GitLabClient:
                 resp.text[:500],
             ) from e
 
+    @staticmethod
+    def _raise_for_status(resp: httpx.Response) -> None:
+        if resp.status_code in (401, 403):
+            raise GitLabAuthError(resp.status_code, resp.text)
+        if resp.status_code == 404:
+            raise GitLabNotFoundError(resp.text)
+        if not resp.is_success:
+            raise GitLabApiError(resp.status_code, resp.reason_phrase or "", resp.text)
+
     async def get(
         self, path: str, params: dict[str, Any] | None = None, *, raw: bool = False
     ) -> Any:
         return await self._request("GET", path, params=params, raw=raw)
+
+    async def get_paged(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[list[Any], int | None]:
+        """GET a list endpoint, returning (items, next_page).
+
+        GitLab reports paging in response headers, which ``_request`` discards.
+        Without them a capped list is indistinguishable from a complete one, so
+        every list tool silently truncated with no way to ask for the rest.
+        ``next_page`` is None on the last page.
+        """
+        resp = await self._client.request("GET", path, params=params, headers={})
+        self._raise_for_status(resp)
+
+        if resp.status_code == 204 or not resp.content:
+            return [], None
+
+        content_type = resp.headers.get("content-type", "")
+        if "text/html" in content_type:
+            msg = "Unexpected HTML response — check URL and authentication"
+            raise GitLabApiError(resp.status_code, msg, resp.text[:500])
+
+        try:
+            items = resp.json()
+        except json.JSONDecodeError as e:
+            raise GitLabApiError(
+                resp.status_code,
+                f"JSON parse error: {e}",
+                resp.text[:500],
+            ) from e
+
+        next_page = resp.headers.get("x-next-page") or None
+        return items, int(next_page) if next_page else None
 
     async def post(self, path: str, json_data: Any = None, **kwargs: Any) -> Any:
         return await self._request("POST", path, json_data=json_data, **kwargs)
@@ -198,9 +235,11 @@ class GitLabClient:
 
     # ── Groups ────────────────────────────────────────────────────
 
-    async def list_groups(self, params: dict[str, Any] | None = None) -> list[dict]:
+    async def list_groups(
+        self, params: dict[str, Any] | None = None
+    ) -> tuple[list[dict], int | None]:
         p = {"per_page": 50, **(params or {})}
-        return await self.get("/groups", params=p)
+        return await self.get_paged("/groups", params=p)
 
     async def get_group(self, group_id: str | int) -> dict:
         enc = self._encode_id(group_id)
@@ -238,10 +277,10 @@ class GitLabClient:
 
     async def list_branches(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 100, **(params or {})}
-        return await self.get(f"/projects/{enc}/repository/branches", params=p)
+        return await self.get_paged(f"/projects/{enc}/repository/branches", params=p)
 
     async def create_branch(self, project_id: str | int, branch: str, ref: str) -> dict:
         enc = self._encode_id(project_id)
@@ -258,10 +297,10 @@ class GitLabClient:
 
     async def list_commits(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 40, **(params or {})}
-        return await self.get(f"/projects/{enc}/repository/commits", params=p)
+        return await self.get_paged(f"/projects/{enc}/repository/commits", params=p)
 
     async def get_commit(self, project_id: str | int, sha: str) -> dict:
         enc = self._encode_id(project_id)
@@ -286,10 +325,10 @@ class GitLabClient:
 
     async def list_merge_requests(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 20, **(params or {})}
-        return await self.get(f"/projects/{enc}/merge_requests", params=p)
+        return await self.get_paged(f"/projects/{enc}/merge_requests", params=p)
 
     async def get_merge_request(self, project_id: str | int, mr_iid: int) -> dict:
         return await self.get(self._mr_path(project_id, mr_iid))
@@ -321,10 +360,12 @@ class GitLabClient:
 
     # ── MR Notes ──────────────────────────────────────────────────
 
-    async def list_mr_notes(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        return await self.get(
+    async def list_mr_notes(
+        self, project_id: str | int, mr_iid: int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
+        return await self.get_paged(
             f"{self._mr_path(project_id, mr_iid)}/notes",
-            params={"per_page": 100},
+            params={"per_page": 100, "page": page},
         )
 
     async def add_mr_note(
@@ -367,10 +408,12 @@ class GitLabClient:
 
     # ── MR Discussions ────────────────────────────────────────────
 
-    async def list_mr_discussions(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        return await self.get(
+    async def list_mr_discussions(
+        self, project_id: str | int, mr_iid: int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
+        return await self.get_paged(
             f"{self._mr_path(project_id, mr_iid)}/discussions",
-            params={"per_page": 100},
+            params={"per_page": 100, "page": page},
         )
 
     async def create_mr_discussion(
@@ -410,11 +453,19 @@ class GitLabClient:
     async def get_mr_approvals(self, project_id: str | int, mr_iid: int) -> dict:
         return await self.get(f"{self._mr_path(project_id, mr_iid)}/approvals")
 
-    async def list_mr_pipelines(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        return await self.get(f"{self._mr_path(project_id, mr_iid)}/pipelines")
+    async def list_mr_pipelines(
+        self, project_id: str | int, mr_iid: int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
+        return await self.get_paged(
+            f"{self._mr_path(project_id, mr_iid)}/pipelines", params={"page": page}
+        )
 
-    async def list_mr_commits(self, project_id: str | int, mr_iid: int) -> list[dict]:
-        return await self.get(f"{self._mr_path(project_id, mr_iid)}/commits")
+    async def list_mr_commits(
+        self, project_id: str | int, mr_iid: int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
+        return await self.get_paged(
+            f"{self._mr_path(project_id, mr_iid)}/commits", params={"page": page}
+        )
 
     async def subscribe_mr(self, project_id: str | int, mr_iid: int) -> dict:
         return await self.post(f"{self._mr_path(project_id, mr_iid)}/subscribe")
@@ -426,20 +477,22 @@ class GitLabClient:
 
     async def list_pipelines(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 20, **(params or {})}
-        return await self.get(f"/projects/{enc}/pipelines", params=p)
+        return await self.get_paged(f"/projects/{enc}/pipelines", params=p)
 
     async def get_pipeline(self, project_id: str | int, pipeline_id: int) -> dict:
         enc = self._encode_id(project_id)
         return await self.get(f"/projects/{enc}/pipelines/{pipeline_id}")
 
-    async def list_pipeline_jobs(self, project_id: str | int, pipeline_id: int) -> list[dict]:
+    async def list_pipeline_jobs(
+        self, project_id: str | int, pipeline_id: int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
-        return await self.get(
+        return await self.get_paged(
             f"/projects/{enc}/pipelines/{pipeline_id}/jobs",
-            params={"per_page": 100},
+            params={"per_page": 100, "page": page},
         )
 
     async def create_pipeline(
@@ -495,10 +548,10 @@ class GitLabClient:
 
     async def list_tags(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 20, **(params or {})}
-        return await self.get(f"/projects/{enc}/repository/tags", params=p)
+        return await self.get_paged(f"/projects/{enc}/repository/tags", params=p)
 
     async def get_tag(self, project_id: str | int, tag_name: str) -> dict:
         enc = self._encode_id(project_id)
@@ -516,10 +569,10 @@ class GitLabClient:
 
     async def list_releases(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 20, **(params or {})}
-        return await self.get(f"/projects/{enc}/releases", params=p)
+        return await self.get_paged(f"/projects/{enc}/releases", params=p)
 
     async def get_release(self, project_id: str | int, tag_name: str) -> dict:
         enc = self._encode_id(project_id)
@@ -541,9 +594,13 @@ class GitLabClient:
 
     # ── CI/CD Variables (Project) ─────────────────────────────────
 
-    async def list_variables(self, project_id: str | int) -> list[dict]:
+    async def list_variables(
+        self, project_id: str | int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
-        return await self.get(f"/projects/{enc}/variables", params={"per_page": 100})
+        return await self.get_paged(
+            f"/projects/{enc}/variables", params={"per_page": 100, "page": page}
+        )
 
     async def create_variable(self, project_id: str | int, params: dict[str, Any]) -> dict:
         enc = self._encode_id(project_id)
@@ -576,9 +633,13 @@ class GitLabClient:
 
     # ── CI/CD Variables (Group) ───────────────────────────────────
 
-    async def list_group_variables(self, group_id: str | int) -> list[dict]:
+    async def list_group_variables(
+        self, group_id: str | int, page: int = 1
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(group_id)
-        return await self.get(f"/groups/{enc}/variables", params={"per_page": 100})
+        return await self.get_paged(
+            f"/groups/{enc}/variables", params={"per_page": 100, "page": page}
+        )
 
     async def create_group_variable(self, group_id: str | int, params: dict[str, Any]) -> dict:
         enc = self._encode_id(group_id)
@@ -598,10 +659,10 @@ class GitLabClient:
 
     async def list_issues(
         self, project_id: str | int, params: dict[str, Any] | None = None
-    ) -> list[dict]:
+    ) -> tuple[list[dict], int | None]:
         enc = self._encode_id(project_id)
         p = {"per_page": 20, **(params or {})}
-        return await self.get(f"/projects/{enc}/issues", params=p)
+        return await self.get_paged(f"/projects/{enc}/issues", params=p)
 
     async def get_issue(self, project_id: str | int, issue_iid: int) -> dict:
         enc = self._encode_id(project_id)

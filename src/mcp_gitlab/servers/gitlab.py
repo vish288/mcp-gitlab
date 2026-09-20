@@ -68,12 +68,23 @@ def _ok(data: Any) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False)
 
 
-def _paginated(items: list) -> str:
-    """Wrap a list response with pagination metadata."""
+def _paginated(items: list, next_page: int | None = None) -> str:
+    """Wrap a list response with its real pagination state.
+
+    ``count`` is the size of *this* page, never a grand total. ``next_page``
+    comes from GitLab's X-Next-Page header and is None on the last page.
+
+    Previously this returned only items and a count while the docstring claimed
+    to carry pagination metadata: the headers were discarded in the client, so a
+    capped list was indistinguishable from a complete one and there was no way
+    to request the rest.
+    """
     return json.dumps(
         {
             "items": items,
             "count": len(items),
+            "has_more": next_page is not None,
+            "next_page": next_page,
         },
         indent=2,
         ensure_ascii=False,
@@ -616,6 +627,7 @@ async def gitlab_list_groups(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List groups visible to the caller.
 
@@ -627,8 +639,9 @@ async def gitlab_list_groups(
             params["search"] = search
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_groups(params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_groups(params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -771,6 +784,7 @@ async def gitlab_list_branches(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List branches in a project.
 
@@ -782,8 +796,9 @@ async def gitlab_list_branches(
             params["search"] = search
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_branches(project_id, params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_branches(project_id, params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -853,6 +868,7 @@ async def gitlab_list_commits(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List commits on a ref (branch, tag, or sha).
 
@@ -870,8 +886,9 @@ async def gitlab_list_commits(
             params["path"] = path
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_commits(project_id, params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_commits(project_id, params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -993,6 +1010,7 @@ async def gitlab_list_mrs(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List merge requests in a project, filterable by state/labels/author.
 
@@ -1014,8 +1032,9 @@ async def gitlab_list_mrs(
             params["labels"] = labels
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_merge_requests(project_id, params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_merge_requests(project_id, params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -1301,16 +1320,17 @@ async def gitlab_list_mr_notes(
     ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     include_system: Annotated[bool, Field(description="Include system-generated notes")] = False,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List notes (comments) on a merge request.
 
     Returns id, body, author, created_at, and system flag per note.
     """
     try:
-        data = await _get_client(ctx).list_mr_notes(project_id, mr_iid)
+        data, next_page = await _get_client(ctx).list_mr_notes(project_id, mr_iid, page)
         if not include_system:
             data = [n for n in data if not n.get("system", False)]
-        return _paginated(data)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -1447,20 +1467,21 @@ async def gitlab_list_mr_discussions(
         str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
     ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List discussions on a merge request.
 
     Returns discussion threads with notes, excluding system-only threads.
     """
     try:
-        data = await _get_client(ctx).list_mr_discussions(project_id, mr_iid)
+        data, next_page = await _get_client(ctx).list_mr_discussions(project_id, mr_iid, page)
         # Filter out system-only discussions
         filtered = []
         for d in data:
             notes = d.get("notes", [])
             if any(not n.get("system", False) for n in notes):
                 filtered.append(d)
-        return _paginated(filtered)
+        return _paginated(filtered, next_page)
     except Exception as e:
         return _err(e)
 
@@ -1671,14 +1692,15 @@ async def gitlab_list_mr_pipelines(
     ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List pipelines associated with a merge request.
 
     Returns id, status, ref, sha, source, web_url per pipeline.
     """
     try:
-        data = await _get_client(ctx).list_mr_pipelines(project_id, mr_iid)
-        return _paginated([_slim_pipeline(p) for p in data] if slim else data)
+        data, next_page = await _get_client(ctx).list_mr_pipelines(project_id, mr_iid, page)
+        return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -1693,14 +1715,15 @@ async def gitlab_list_mr_commits(
         str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
     ],
     mr_iid: Annotated[int, Field(description="Merge request IID")],
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List commits included in a merge request.
 
     Returns id, short_id, title, author_name, authored_date per commit.
     """
     try:
-        data = await _get_client(ctx).list_mr_commits(project_id, mr_iid)
-        return _paginated(data)
+        data, next_page = await _get_client(ctx).list_mr_commits(project_id, mr_iid, page)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -1777,6 +1800,7 @@ async def gitlab_list_pipelines(
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List pipelines for a project. Returns id, status, ref, source, timing, web_url."""
     try:
@@ -1789,8 +1813,9 @@ async def gitlab_list_pipelines(
             params["source"] = source
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_pipelines(project_id, params or None)
-        return _paginated([_slim_pipeline(p) for p in data] if slim else data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_pipelines(project_id, params or None)
+        return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -1819,7 +1844,7 @@ async def gitlab_get_pipeline(
         if slim:
             pipeline = _slim_pipeline(pipeline)
         if include_jobs:
-            jobs = await client.list_pipeline_jobs(project_id, pipeline_id)
+            jobs, _ = await client.list_pipeline_jobs(project_id, pipeline_id)
             pipeline["jobs"] = [_slim_job(j) for j in jobs] if slim else jobs
         return _ok(pipeline)
     except Exception as e:
@@ -2023,6 +2048,7 @@ async def gitlab_list_tags(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List repository tags.
 
@@ -2038,8 +2064,9 @@ async def gitlab_list_tags(
             params["sort"] = sort
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_tags(project_id, params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_tags(project_id, params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -2128,6 +2155,7 @@ async def gitlab_list_releases(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List project releases.
 
@@ -2137,8 +2165,9 @@ async def gitlab_list_releases(
         params: dict[str, Any] = {}
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_releases(project_id, params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_releases(project_id, params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -2274,6 +2303,7 @@ async def gitlab_list_variables(
     project_id: Annotated[
         str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
     ],
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List project CI/CD variables.
 
@@ -2281,11 +2311,11 @@ async def gitlab_list_variables(
     environment_scope per variable.
     """
     try:
-        data = await _get_client(ctx).list_variables(project_id)
+        data, next_page = await _get_client(ctx).list_variables(project_id, page)
         for var in data:
             if var.get("masked"):
                 var["value"] = "***MASKED***"
-        return _paginated(data)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -2417,6 +2447,7 @@ async def gitlab_delete_variable(
 async def gitlab_list_group_variables(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List group CI/CD variables.
 
@@ -2424,11 +2455,11 @@ async def gitlab_list_group_variables(
     environment_scope per variable.
     """
     try:
-        data = await _get_client(ctx).list_group_variables(group_id)
+        data, next_page = await _get_client(ctx).list_group_variables(group_id, page)
         for var in data:
             if var.get("masked"):
                 var["value"] = "***MASKED***"
-        return _paginated(data)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 
@@ -2549,6 +2580,7 @@ async def gitlab_list_issues(
     per_page: Annotated[
         int | None, Field(description="Results per page (1-100)", ge=1, le=100)
     ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List issues in a project, filterable by state/labels/assignee.
 
@@ -2566,8 +2598,9 @@ async def gitlab_list_issues(
             params["assignee_id"] = assignee_id
         if per_page:
             params["per_page"] = per_page
-        data = await _get_client(ctx).list_issues(project_id, params or None)
-        return _paginated(data)
+        params["page"] = page
+        data, next_page = await _get_client(ctx).list_issues(project_id, params or None)
+        return _paginated(data, next_page)
     except Exception as e:
         return _err(e)
 

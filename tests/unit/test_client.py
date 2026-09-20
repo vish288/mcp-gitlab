@@ -130,9 +130,39 @@ class TestRequest:
                 return_value=httpx.Response(200, json=[{"name": "main"}, {"name": "develop"}])
             )
             client = _make_client()
-            result = await client.list_branches(123)
-            assert len(result) == 2
-            assert result[0]["name"] == "main"
+            branches, next_page = await client.list_branches(123)
+            assert len(branches) == 2
+            assert branches[0]["name"] == "main"
+            assert next_page is None  # no X-Next-Page header -> last page
+
+    @pytest.mark.asyncio
+    async def test_list_reports_next_page(self):
+        """X-Next-Page is the only signal that a list was cut short."""
+        async with respx.mock(base_url=BASE) as router:
+            router.get("/projects/123/repository/branches").mock(
+                return_value=httpx.Response(
+                    200,
+                    json=[{"name": "main"}],
+                    headers={"X-Next-Page": "2", "X-Total-Pages": "7"},
+                )
+            )
+            client = _make_client()
+            branches, next_page = await client.list_branches(123)
+            assert len(branches) == 1
+            assert next_page == 2
+
+    @pytest.mark.asyncio
+    async def test_blank_next_page_header_means_last_page(self):
+        """GitLab sends X-Next-Page as an empty string on the final page."""
+        async with respx.mock(base_url=BASE) as router:
+            router.get("/projects/123/repository/branches").mock(
+                return_value=httpx.Response(
+                    200, json=[{"name": "main"}], headers={"X-Next-Page": ""}
+                )
+            )
+            client = _make_client()
+            _branches, next_page = await client.list_branches(123)
+            assert next_page is None
 
     @pytest.mark.asyncio
     async def test_create_merge_request(self):
