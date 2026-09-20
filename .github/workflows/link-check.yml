@@ -1,0 +1,23 @@
+name: Link check
+
+# Documentation links are checked on a schedule rather than per-push. They
+# assert on third-party availability, so a transient failure at pypi.org or
+# shields.io says nothing about the commit that triggered it -- it only reddens
+# an unrelated PR. Weekly is often enough to catch real rot, and a failure here
+# is information rather than a merge blocker.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+      - run: uv sync --all-extras
+      # -m network selects exactly what the default run excludes.
+      - run: uv run pytest -m network tests/test_links.py

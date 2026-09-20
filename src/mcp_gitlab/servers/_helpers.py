@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
+from ..client import parse_project_path
+
 
 @functools.cache
 def _load_file(base_dir: str, filename: str) -> str:
@@ -33,8 +35,9 @@ def _load_file(base_dir: str, filename: str) -> str:
 _MR_RE = re.compile(r"https?://[^/]+/(.+?)/-/merge_requests/(\d+)")
 # Matches:  <host>/<namespace/project>/-/pipelines/<id>
 _PIPELINE_RE = re.compile(r"https?://[^/]+/(.+?)/-/pipelines/(\d+)")
-# Matches:  <host>/<namespace/project> (no /-/ suffix)
-_PROJECT_RE = re.compile(r"https?://[^/]+/(.+?)(?:/-/.*)?$")
+# The project-path parse lives in the client, which owns the encoding rules.
+# It used to be duplicated here with a subtly different pattern; see
+# client.parse_project_path for what that cost.
 
 
 def _parse_gitlab_mr_url(value: str) -> tuple[str, str]:
@@ -64,9 +67,4 @@ def _parse_gitlab_project_url(value: str) -> str:
 
     If *value* is not a URL, returns it unchanged.
     """
-    if not value.startswith(("http://", "https://")):
-        return value
-    m = _PROJECT_RE.match(value)
-    if m:
-        return unquote(m.group(1))
-    return value
+    return parse_project_path(value)

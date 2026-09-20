@@ -45,6 +45,29 @@ class TestEncodeId:
             == "my-group%2Fmy-project"
         )
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://gitlab.com/my-group/my-project",
+            "https://gitlab.com/my-group/my-project/",
+            "https://gitlab.com/my-group/my-project/-/merge_requests/42",
+            "https://gitlab.com/my-group/my-project/-/pipelines/7",
+            "my-group/my-project",
+        ],
+    )
+    def test_both_parsers_agree(self, url):
+        """The client and the prompt helper must resolve a URL identically.
+
+        They were separate regexes and disagreed on a trailing slash: the helper
+        returned 'my-group/my-project/', which encoded to '...%2F' and 404'd, so
+        a pasted URL ending in '/' made the project look missing.
+        """
+        from mcp_gitlab.client import parse_project_path
+        from mcp_gitlab.servers._helpers import _parse_gitlab_project_url
+
+        assert _parse_gitlab_project_url(url) == parse_project_path(url)
+        assert not parse_project_path(url).endswith("/")
+
     def test_pipeline_url(self):
         assert (
             GitLabClient._encode_id("https://gitlab.example.com/g/sub/proj/-/pipelines/999")

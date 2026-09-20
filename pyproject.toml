@@ -96,6 +96,12 @@ ignore = []
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Network tests are opt-in. They assert on third-party availability, so a blip
+# at pypi.org or shields.io reddens a PR that changed nothing -- which happened
+# on the PR that fixed pagination. Run them with `-m network`, or let the
+# weekly link-check workflow do it.
+addopts = "-m 'not network'"
+markers = ["network: hits the live internet; excluded from the default run"]
 
 [tool.coverage.run]
 omit = ["src/mcp_gitlab/__init__.py", "src/mcp_gitlab/__main__.py"]

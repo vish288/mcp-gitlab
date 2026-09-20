@@ -108,6 +108,7 @@ def http_client():
         yield client
 
 
+@pytest.mark.network
 @pytest.mark.parametrize(
     ("source_file", "url"),
     _checkable,
