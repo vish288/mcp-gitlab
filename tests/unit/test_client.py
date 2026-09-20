@@ -139,6 +139,41 @@ class TestRequest:
                 await client.get_project(123)
 
     @pytest.mark.asyncio
+    async def test_html_response_error_on_raw_path(self):
+        """A raw read must not hand back a login page as content.
+
+        The raw return used to sit above the HTML guard, so an auth redirect
+        made get_job_log return `<html>…Login…` as though it were a job trace.
+        get_job_log is the only raw=True caller, and a trace is text/plain, so
+        HTML here is always a failure rather than a payload.
+        """
+        async with respx.mock(base_url=BASE) as router:
+            router.get("/projects/123/jobs/7/trace").mock(
+                return_value=httpx.Response(
+                    200,
+                    text="<html><body>Login</body></html>",
+                    headers={"content-type": "text/html"},
+                )
+            )
+            client = _make_client()
+            with pytest.raises(GitLabApiError, match="HTML"):
+                await client.get_job_log(123, 7)
+
+    @pytest.mark.asyncio
+    async def test_raw_path_still_returns_plain_text(self):
+        """The guard must not swallow legitimate raw traces."""
+        async with respx.mock(base_url=BASE) as router:
+            router.get("/projects/123/jobs/7/trace").mock(
+                return_value=httpx.Response(
+                    200,
+                    text="$ echo build\nbuild ok\n",
+                    headers={"content-type": "text/plain"},
+                )
+            )
+            client = _make_client()
+            assert "build ok" in await client.get_job_log(123, 7)
+
+    @pytest.mark.asyncio
     async def test_empty_response(self):
         async with respx.mock(base_url=BASE) as router:
             router.delete("/projects/123").mock(return_value=httpx.Response(204))
