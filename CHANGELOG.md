@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2] - 2026-09-20
+
+### Tests
+- test: pin the HTML guard on the raw response path (8a3236a)
+
+### Other
+
+
 ## [0.10.1] - 2026-09-20
 
 ### Bug Fixes
