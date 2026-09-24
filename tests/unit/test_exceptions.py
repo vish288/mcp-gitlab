@@ -1,11 +1,40 @@
-"""Tests for exceptions."""
+"""Tests for exceptions and the _err envelope that maps them."""
+
+import json
+
+import pytest
 
 from mcp_gitlab.exceptions import (
     GitLabApiError,
     GitLabAuthError,
+    GitLabError,
     GitLabNotFoundError,
     GitLabWriteDisabledError,
 )
+from mcp_gitlab.servers.gitlab import _err
+
+API = {"error", "status_code", "body"}
+HINTED = API | {"hint"}
+
+
+@pytest.mark.parametrize(
+    ("exc", "keys"),
+    [
+        (GitLabError("base"), {"error"}),
+        (GitLabApiError(500, "Internal Server Error", "boom"), API),
+        (GitLabApiError(409, "Conflict"), HINTED),
+        (GitLabApiError(422, "Unprocessable"), HINTED),
+        (GitLabApiError(429, "Too Many Requests"), HINTED),
+        (GitLabAuthError(401), HINTED),
+        (GitLabAuthError(403), HINTED),
+        (GitLabNotFoundError("gone"), HINTED),
+        (GitLabWriteDisabledError(), {"error", "hint"}),
+    ],
+    ids=["base", "api-500", "api-409", "api-422", "api-429", "auth-401", "auth-403", "404", "ro"],
+)
+def test_err_envelope_key_set(exc, keys):
+    """Exact key set per exception type; dropping ``body`` or ``hint`` fails here."""
+    assert json.loads(_err(exc)).keys() == keys
 
 
 def test_api_error():
