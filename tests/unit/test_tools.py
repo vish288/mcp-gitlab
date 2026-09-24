@@ -3,60 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
-import respx
-from fastmcp import Client, FastMCP
 from httpx import Response
-
-from mcp_gitlab.client import GitLabClient
-from mcp_gitlab.config import GitLabConfig
-
-TEST_URL = "https://gitlab.example.com"
-TEST_TOKEN = "test-token"
-
-
-def _make_mcp(*, read_only: bool = False) -> FastMCP:
-    """Build a FastMCP server with mocked lifespan."""
-    config = GitLabConfig(url=TEST_URL, token=TEST_TOKEN, read_only=read_only)
-    client = GitLabClient(config)
-
-    @asynccontextmanager
-    async def mock_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
-        try:
-            yield {"client": client, "config": config}
-        finally:
-            await client.close()
-
-    # Import the real mcp instance and swap lifespan
-    from mcp_gitlab.servers.gitlab import mcp
-
-    original_lifespan = mcp._lifespan
-    mcp._lifespan = mock_lifespan
-    return mcp, original_lifespan
-
-
-@pytest.fixture
-async def tool_client():
-    """FastMCP test client with mocked lifespan and respx-mocked HTTP."""
-    mcp, original_lifespan = _make_mcp()
-    with respx.mock(base_url=f"{TEST_URL}/api/v4") as router:
-        async with Client(mcp) as client:
-            yield client, router
-    mcp._lifespan = original_lifespan
-
-
-@pytest.fixture
-async def readonly_client():
-    """FastMCP test client in read-only mode."""
-    mcp, original_lifespan = _make_mcp(read_only=True)
-    with respx.mock(base_url=f"{TEST_URL}/api/v4") as router:
-        async with Client(mcp) as client:
-            yield client, router
-    mcp._lifespan = original_lifespan
 
 
 def _parse(result: Any) -> dict | list:
