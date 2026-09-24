@@ -4,17 +4,9 @@ from __future__ import annotations
 
 import httpx
 import pytest
-import respx
 
 from mcp_gitlab.client import GitLabClient
-from mcp_gitlab.config import GitLabConfig
 from mcp_gitlab.exceptions import GitLabApiError, GitLabAuthError, GitLabNotFoundError
-
-BASE = "https://gitlab.example.com/api/v4"
-
-
-def _make_client() -> GitLabClient:
-    return GitLabClient(GitLabConfig(url="https://gitlab.example.com", token="test-token"))
 
 
 class TestEncodeId:
@@ -85,61 +77,45 @@ class TestEncodeId:
 
 
 class TestRequest:
-    @pytest.mark.asyncio
-    async def test_get_project(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123").mock(
-                return_value=httpx.Response(200, json={"id": 123, "name": "test"})
+    async def test_get_project(self, client, mock_api):
+        mock_api.get("/projects/123").mock(
+            return_value=httpx.Response(200, json={"id": 123, "name": "test"})
+        )
+        result = await client.get_project(123)
+        assert result["id"] == 123
+        assert result["name"] == "test"
+
+    async def test_auth_error_401(self, client, mock_api):
+        mock_api.get("/projects/123").mock(return_value=httpx.Response(401, text="Unauthorized"))
+        with pytest.raises(GitLabAuthError) as exc_info:
+            await client.get_project(123)
+        assert exc_info.value.status_code == 401
+
+    async def test_not_found_error(self, client, mock_api):
+        mock_api.get("/projects/999").mock(return_value=httpx.Response(404, text="Not Found"))
+        with pytest.raises(GitLabNotFoundError):
+            await client.get_project(999)
+
+    async def test_server_error(self, client, mock_api):
+        mock_api.get("/projects/123").mock(
+            return_value=httpx.Response(500, text="Internal Server Error")
+        )
+        with pytest.raises(GitLabApiError) as exc_info:
+            await client.get_project(123)
+        assert exc_info.value.status_code == 500
+
+    async def test_html_response_error(self, client, mock_api):
+        mock_api.get("/projects/123").mock(
+            return_value=httpx.Response(
+                200,
+                text="<html><body>Login</body></html>",
+                headers={"content-type": "text/html"},
             )
-            client = _make_client()
-            result = await client.get_project(123)
-            assert result["id"] == 123
-            assert result["name"] == "test"
+        )
+        with pytest.raises(GitLabApiError, match="HTML"):
+            await client.get_project(123)
 
-    @pytest.mark.asyncio
-    async def test_auth_error_401(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123").mock(return_value=httpx.Response(401, text="Unauthorized"))
-            client = _make_client()
-            with pytest.raises(GitLabAuthError) as exc_info:
-                await client.get_project(123)
-            assert exc_info.value.status_code == 401
-
-    @pytest.mark.asyncio
-    async def test_not_found_error(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/999").mock(return_value=httpx.Response(404, text="Not Found"))
-            client = _make_client()
-            with pytest.raises(GitLabNotFoundError):
-                await client.get_project(999)
-
-    @pytest.mark.asyncio
-    async def test_server_error(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123").mock(
-                return_value=httpx.Response(500, text="Internal Server Error")
-            )
-            client = _make_client()
-            with pytest.raises(GitLabApiError) as exc_info:
-                await client.get_project(123)
-            assert exc_info.value.status_code == 500
-
-    @pytest.mark.asyncio
-    async def test_html_response_error(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123").mock(
-                return_value=httpx.Response(
-                    200,
-                    text="<html><body>Login</body></html>",
-                    headers={"content-type": "text/html"},
-                )
-            )
-            client = _make_client()
-            with pytest.raises(GitLabApiError, match="HTML"):
-                await client.get_project(123)
-
-    @pytest.mark.asyncio
-    async def test_html_response_error_on_raw_path(self):
+    async def test_html_response_error_on_raw_path(self, client, mock_api):
         """A raw read must not hand back a login page as content.
 
         The raw return used to sit above the HTML guard, so an auth redirect
@@ -147,115 +123,87 @@ class TestRequest:
         get_job_log is the only raw=True caller, and a trace is text/plain, so
         HTML here is always a failure rather than a payload.
         """
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123/jobs/7/trace").mock(
-                return_value=httpx.Response(
-                    200,
-                    text="<html><body>Login</body></html>",
-                    headers={"content-type": "text/html"},
-                )
+        mock_api.get("/projects/123/jobs/7/trace").mock(
+            return_value=httpx.Response(
+                200,
+                text="<html><body>Login</body></html>",
+                headers={"content-type": "text/html"},
             )
-            client = _make_client()
-            with pytest.raises(GitLabApiError, match="HTML"):
-                await client.get_job_log(123, 7)
+        )
+        with pytest.raises(GitLabApiError, match="HTML"):
+            await client.get_job_log(123, 7)
 
-    @pytest.mark.asyncio
-    async def test_raw_path_still_returns_plain_text(self):
+    async def test_raw_path_still_returns_plain_text(self, client, mock_api):
         """The guard must not swallow legitimate raw traces."""
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123/jobs/7/trace").mock(
-                return_value=httpx.Response(
-                    200,
-                    text="$ echo build\nbuild ok\n",
-                    headers={"content-type": "text/plain"},
-                )
+        mock_api.get("/projects/123/jobs/7/trace").mock(
+            return_value=httpx.Response(
+                200,
+                text="$ echo build\nbuild ok\n",
+                headers={"content-type": "text/plain"},
             )
-            client = _make_client()
-            assert "build ok" in await client.get_job_log(123, 7)
+        )
+        assert "build ok" in await client.get_job_log(123, 7)
 
-    @pytest.mark.asyncio
-    async def test_empty_response(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.delete("/projects/123").mock(return_value=httpx.Response(204))
-            client = _make_client()
-            result = await client.delete_project(123)
-            assert result is None
+    async def test_empty_response(self, client, mock_api):
+        mock_api.delete("/projects/123").mock(return_value=httpx.Response(204))
+        result = await client.delete_project(123)
+        assert result is None
 
-    @pytest.mark.asyncio
-    async def test_list_branches(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123/repository/branches").mock(
-                return_value=httpx.Response(200, json=[{"name": "main"}, {"name": "develop"}])
-            )
-            client = _make_client()
-            branches, next_page = await client.list_branches(123)
-            assert len(branches) == 2
-            assert branches[0]["name"] == "main"
-            assert next_page is None  # no X-Next-Page header -> last page
+    async def test_list_branches(self, client, mock_api):
+        mock_api.get("/projects/123/repository/branches").mock(
+            return_value=httpx.Response(200, json=[{"name": "main"}, {"name": "develop"}])
+        )
+        branches, next_page = await client.list_branches(123)
+        assert len(branches) == 2
+        assert branches[0]["name"] == "main"
+        assert next_page is None  # no X-Next-Page header -> last page
 
-    @pytest.mark.asyncio
-    async def test_list_reports_next_page(self):
+    async def test_list_reports_next_page(self, client, mock_api):
         """X-Next-Page is the only signal that a list was cut short."""
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123/repository/branches").mock(
-                return_value=httpx.Response(
-                    200,
-                    json=[{"name": "main"}],
-                    headers={"X-Next-Page": "2", "X-Total-Pages": "7"},
-                )
+        mock_api.get("/projects/123/repository/branches").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"name": "main"}],
+                headers={"X-Next-Page": "2", "X-Total-Pages": "7"},
             )
-            client = _make_client()
-            branches, next_page = await client.list_branches(123)
-            assert len(branches) == 1
-            assert next_page == 2
+        )
+        branches, next_page = await client.list_branches(123)
+        assert len(branches) == 1
+        assert next_page == 2
 
-    @pytest.mark.asyncio
-    async def test_blank_next_page_header_means_last_page(self):
+    async def test_blank_next_page_header_means_last_page(self, client, mock_api):
         """GitLab sends X-Next-Page as an empty string on the final page."""
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123/repository/branches").mock(
-                return_value=httpx.Response(
-                    200, json=[{"name": "main"}], headers={"X-Next-Page": ""}
-                )
-            )
-            client = _make_client()
-            _branches, next_page = await client.list_branches(123)
-            assert next_page is None
+        mock_api.get("/projects/123/repository/branches").mock(
+            return_value=httpx.Response(200, json=[{"name": "main"}], headers={"X-Next-Page": ""})
+        )
+        _branches, next_page = await client.list_branches(123)
+        assert next_page is None
 
-    @pytest.mark.asyncio
-    async def test_create_merge_request(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.post("/projects/123/merge_requests").mock(
-                return_value=httpx.Response(201, json={"iid": 1, "title": "Test MR"})
-            )
-            client = _make_client()
-            result = await client.create_merge_request(
-                123,
-                {
-                    "source_branch": "feature",
-                    "target_branch": "main",
-                    "title": "Test MR",
-                },
-            )
-            assert result["iid"] == 1
+    async def test_create_merge_request(self, client, mock_api):
+        mock_api.post("/projects/123/merge_requests").mock(
+            return_value=httpx.Response(201, json={"iid": 1, "title": "Test MR"})
+        )
+        result = await client.create_merge_request(
+            123,
+            {
+                "source_branch": "feature",
+                "target_branch": "main",
+                "title": "Test MR",
+            },
+        )
+        assert result["iid"] == 1
 
-    @pytest.mark.asyncio
-    async def test_get_job_log(self):
-        async with respx.mock(base_url=BASE) as router:
-            router.get("/projects/123/jobs/456/trace").mock(
-                return_value=httpx.Response(200, text="line1\nline2\nline3")
-            )
-            client = _make_client()
-            result = await client.get_job_log(123, 456)
-            assert "line1" in result
-            assert "line3" in result
+    async def test_get_job_log(self, client, mock_api):
+        mock_api.get("/projects/123/jobs/456/trace").mock(
+            return_value=httpx.Response(200, text="line1\nline2\nline3")
+        )
+        result = await client.get_job_log(123, 456)
+        assert "line1" in result
+        assert "line3" in result
 
-    @pytest.mark.asyncio
-    async def test_path_encoding(self):
-        async with respx.mock(base_url=BASE) as router:
-            route = router.get("/projects/my-group%2Fmy-project").mock(
-                return_value=httpx.Response(200, json={"id": 1})
-            )
-            client = _make_client()
-            await client.get_project("my-group/my-project")
-            assert route.called
+    async def test_path_encoding(self, client, mock_api):
+        route = mock_api.get("/projects/my-group%2Fmy-project").mock(
+            return_value=httpx.Response(200, json={"id": 1})
+        )
+        await client.get_project("my-group/my-project")
+        assert route.called
