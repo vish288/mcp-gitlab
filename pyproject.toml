@@ -104,6 +104,7 @@ addopts = "-m 'not network'"
 markers = ["network: hits the live internet; excluded from the default run"]
 
 [tool.coverage.run]
+source = ["src"]
 omit = ["src/mcp_gitlab/__init__.py", "src/mcp_gitlab/__main__.py"]
 
 [tool.mypy]
