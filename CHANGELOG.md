@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.3] - 2026-09-25
+
+### Tests
+- test: pin the wire request, the failure envelope and the registry per tool (11ef4f7)
+- test: share the through-Client fixtures and close every client (b1367ab)
+
+### Chores
+- chore: ignore the .internal tracker directory (4b6dc25)
+
+### Other
+
+
 ## [0.10.2] - 2026-09-20
 
 ### Tests
