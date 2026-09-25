@@ -48,7 +48,7 @@ classifiers = [
     "Framework :: Pydantic :: 2",
 ]
 dependencies = [
-    "fastmcp>=2.13.0,<4",
+    "fastmcp>=2.13.0,<5",
     "httpx>=0.28.0",
     "pydantic>=2.10.0,<3.0",
     "python-dotenv>=1.0.1",
