@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.11.0] - 2026-09-26
+
+### Features
+- feat: report bugs as tool errors, keep the API envelope for expected failures (6d0c04a)
+
+
 ## [0.10.3] - 2026-09-25
 
 ### Tests
