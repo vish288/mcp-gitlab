@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import version
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from ..client import GitLabClient
 from ..config import GitLabConfig
-from ..exceptions import GitLabWriteDisabledError
+from ..exceptions import (
+    GitLabApiError,
+    GitLabAuthError,
+    GitLabError,
+    GitLabNotFoundError,
+    GitLabWriteDisabledError,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -25,6 +33,13 @@ ACCESS_LEVELS = {
     "maintainer": 40,
     "owner": 50,
 }
+
+# The schema rejects anything outside the five names, so the tools no longer
+# validate this by hand and return the rejection as a successful result.
+AccessLevel = Annotated[
+    Literal["guest", "reporter", "developer", "maintainer", "owner"],
+    Field(description="Access level to grant"),
+]
 
 
 @asynccontextmanager
@@ -137,13 +152,6 @@ def _slim_job(j: dict) -> dict:
 
 def _err(error: Exception) -> str:
     detail: dict[str, Any] = {"error": str(error)}
-    from ..exceptions import (
-        GitLabApiError,
-        GitLabAuthError,
-        GitLabNotFoundError,
-        GitLabWriteDisabledError,
-    )
-
     if isinstance(error, GitLabNotFoundError):
         detail["status_code"] = error.status_code
         detail["body"] = error.body
@@ -166,6 +174,47 @@ def _err(error: Exception) -> str:
     return json.dumps(detail, indent=2, ensure_ascii=False)
 
 
+def _params(**kw: Any) -> dict[str, Any]:
+    """Request params from tool arguments, with unset (None) ones dropped."""
+    return {k: v for k, v in kw.items() if v is not None}
+
+
+_Tool = Callable[..., Awaitable[str]]
+
+
+def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
+    """Apply under ``@mcp.tool``. Expected failures become the JSON envelope;
+    anything else is a bug and is raised as a tool error.
+
+    ``GitLabError`` covers what the API can legitimately answer (401/403/404,
+    409/422/429, read-only). Every other exception used to be caught by the
+    same ``except Exception`` and returned as a successful result with no log
+    line, so a ``KeyError`` in a tool body looked like a 404 to the caller.
+    Now it is logged with its traceback and surfaces as ``isError: true``.
+
+    ``write=True`` runs the read-only guard first; its failure is expected and
+    takes the envelope path like any other ``GitLabError``.
+    """
+
+    def wrap(f: _Tool) -> _Tool:
+        @functools.wraps(f)
+        async def inner(ctx: Context, *args: Any, **kwargs: Any) -> str:
+            try:
+                if write:
+                    _check_write(ctx)
+                return await f(ctx, *args, **kwargs)
+            except GitLabError as e:
+                return _err(e)
+            except Exception as e:
+                _log.exception("%s failed", f.__name__)
+                msg = f"{type(e).__name__}: {e}"
+                raise ToolError(msg) from e
+
+        return inner
+
+    return wrap(fn) if fn is not None else wrap
+
+
 # ════════════════════════════════════════════════════════════════════
 # Projects
 # ════════════════════════════════════════════════════════════════════
@@ -175,6 +224,7 @@ def _err(error: Exception) -> str:
     tags={"gitlab", "projects", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_project(
     ctx: Context,
     project_id: Annotated[
@@ -191,17 +241,14 @@ async def gitlab_get_project(
 
     Returns id, name, path_with_namespace, visibility, default_branch, web_url, description.
     """
-    try:
-        data = await _get_client(ctx).get_project(project_id)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_project(project_id))
 
 
 @mcp.tool(
     tags={"gitlab", "projects", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_project(
     ctx: Context,
     name: Annotated[str, Field(description="Project name", min_length=1)],
@@ -216,31 +263,26 @@ async def gitlab_create_project(
 
     Returns the new project's id, name, path_with_namespace, web_url, and default settings.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"name": name}
-        if path is not None:
-            params["path"] = path
-        if namespace_id is not None:
-            params["namespace_id"] = namespace_id
-        if description is not None:
-            params["description"] = description
-        if visibility is not None:
-            params["visibility"] = visibility
-        if initialize_with_readme is not None:
-            params["initialize_with_readme"] = initialize_with_readme
-        if default_branch is not None:
-            params["default_branch"] = default_branch
-        data = await _get_client(ctx).create_project(params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_project(
+            _params(
+                name=name,
+                path=path,
+                namespace_id=namespace_id,
+                description=description,
+                visibility=visibility,
+                initialize_with_readme=initialize_with_readme,
+                default_branch=default_branch,
+            )
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "projects", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_project(
     ctx: Context,
     project_id: Annotated[
@@ -251,18 +293,15 @@ async def gitlab_delete_project(
 
     Returns a {status: deleted, project_id} confirmation.
     """
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_project(project_id)
-        return _ok({"status": "deleted", "project_id": project_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_project(project_id)
+    return _ok({"status": "deleted", "project_id": project_id})
 
 
 @mcp.tool(
     tags={"gitlab", "projects", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_project_merge_settings(
     ctx: Context,
     project_id: Annotated[
@@ -286,25 +325,18 @@ async def gitlab_update_project_merge_settings(
 
     Returns the updated project object.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if only_allow_merge_if_pipeline_succeeds is not None:
-            params["only_allow_merge_if_pipeline_succeeds"] = only_allow_merge_if_pipeline_succeeds
-        if only_allow_merge_if_all_discussions_are_resolved is not None:
-            params["only_allow_merge_if_all_discussions_are_resolved"] = (
-                only_allow_merge_if_all_discussions_are_resolved
-            )
-        if remove_source_branch_after_merge is not None:
-            params["remove_source_branch_after_merge"] = remove_source_branch_after_merge
-        if squash_option is not None:
-            params["squash_option"] = squash_option
-        if merge_method is not None:
-            params["merge_method"] = merge_method
-        data = await _get_client(ctx).update_project(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_project(
+            project_id,
+            _params(
+                only_allow_merge_if_pipeline_succeeds=only_allow_merge_if_pipeline_succeeds,
+                only_allow_merge_if_all_discussions_are_resolved=only_allow_merge_if_all_discussions_are_resolved,
+                remove_source_branch_after_merge=remove_source_branch_after_merge,
+                squash_option=squash_option,
+                merge_method=merge_method,
+            ),
+        )
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -316,6 +348,7 @@ async def gitlab_update_project_merge_settings(
     tags={"gitlab", "approvals", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_project_approvals(
     ctx: Context,
     project_id: Annotated[
@@ -326,17 +359,14 @@ async def gitlab_get_project_approvals(
 
     Returns approvals_before_merge, reset_approvals_on_push, and self-approval rules.
     """
-    try:
-        data = await _get_client(ctx).get_project_approvals(project_id)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_project_approvals(project_id))
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_project_approvals(
     ctx: Context,
     project_id: Annotated[
@@ -359,33 +389,25 @@ async def gitlab_update_project_approvals(
     ] = None,
 ) -> str:
     """Update project-level approval settings. Returns the updated approval configuration."""
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if approvals_before_merge is not None:
-            params["approvals_before_merge"] = approvals_before_merge
-        if reset_approvals_on_push is not None:
-            params["reset_approvals_on_push"] = reset_approvals_on_push
-        if disable_overriding_approvers_per_merge_request is not None:
-            params["disable_overriding_approvers_per_merge_request"] = (
-                disable_overriding_approvers_per_merge_request
-            )
-        if merge_requests_author_approval is not None:
-            params["merge_requests_author_approval"] = merge_requests_author_approval
-        if merge_requests_disable_committers_approval is not None:
-            params["merge_requests_disable_committers_approval"] = (
-                merge_requests_disable_committers_approval
-            )
-        data = await _get_client(ctx).update_project_approvals(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_project_approvals(
+            project_id,
+            _params(
+                approvals_before_merge=approvals_before_merge,
+                reset_approvals_on_push=reset_approvals_on_push,
+                disable_overriding_approvers_per_merge_request=disable_overriding_approvers_per_merge_request,
+                merge_requests_author_approval=merge_requests_author_approval,
+                merge_requests_disable_committers_approval=merge_requests_disable_committers_approval,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_project_approval_rules(
     ctx: Context,
     project_id: Annotated[
@@ -396,17 +418,15 @@ async def gitlab_list_project_approval_rules(
 
     Returns rules with id, name, approvals_required, and eligible approvers/groups.
     """
-    try:
-        data = await _get_client(ctx).list_project_approval_rules(project_id)
-        return _paginated(data)
-    except Exception as e:
-        return _err(e)
+    data = await _get_client(ctx).list_project_approval_rules(project_id)
+    return _paginated(data)
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_project_approval_rule(
     ctx: Context,
     project_id: Annotated[
@@ -421,26 +441,24 @@ async def gitlab_create_project_approval_rule(
 
     Returns the new rule's id, name, approvals_required, and target users/groups.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {
-            "name": name,
-            "approvals_required": approvals_required,
-        }
-        if user_ids:
-            params["user_ids"] = user_ids
-        if group_ids:
-            params["group_ids"] = group_ids
-        data = await _get_client(ctx).create_project_approval_rule(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_project_approval_rule(
+            project_id,
+            _params(
+                name=name,
+                approvals_required=approvals_required,
+                user_ids=user_ids,
+                group_ids=group_ids,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_project_approval_rule(
     ctx: Context,
     project_id: Annotated[
@@ -455,27 +473,25 @@ async def gitlab_update_project_approval_rule(
     group_ids: Annotated[list[int] | None, Field(description="Group IDs for the rule")] = None,
 ) -> str:
     """Update a project-level approval rule. Returns the updated rule object."""
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if name is not None:
-            params["name"] = name
-        if approvals_required is not None:
-            params["approvals_required"] = approvals_required
-        if user_ids is not None:
-            params["user_ids"] = user_ids
-        if group_ids is not None:
-            params["group_ids"] = group_ids
-        data = await _get_client(ctx).update_project_approval_rule(project_id, rule_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_project_approval_rule(
+            project_id,
+            rule_id,
+            _params(
+                name=name,
+                approvals_required=approvals_required,
+                user_ids=user_ids,
+                group_ids=group_ids,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_project_approval_rule(
     ctx: Context,
     project_id: Annotated[
@@ -484,12 +500,8 @@ async def gitlab_delete_project_approval_rule(
     rule_id: Annotated[int, Field(description="Approval rule ID")],
 ) -> str:
     """Delete a project-level approval rule. Returns a {status: deleted, rule_id} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_project_approval_rule(project_id, rule_id)
-        return _ok({"status": "deleted", "rule_id": rule_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_project_approval_rule(project_id, rule_id)
+    return _ok({"status": "deleted", "rule_id": rule_id})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -501,6 +513,7 @@ async def gitlab_delete_project_approval_rule(
     tags={"gitlab", "approvals", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_mr_approval_rules(
     ctx: Context,
     project_id: Annotated[
@@ -512,17 +525,15 @@ async def gitlab_list_mr_approval_rules(
 
     Returns rules with id, name, approvals_required, and approvers.
     """
-    try:
-        data = await _get_client(ctx).list_mr_approval_rules(project_id, mr_iid)
-        return _paginated(data)
-    except Exception as e:
-        return _err(e)
+    data = await _get_client(ctx).list_mr_approval_rules(project_id, mr_iid)
+    return _paginated(data)
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_mr_approval_rule(
     ctx: Context,
     project_id: Annotated[
@@ -538,26 +549,25 @@ async def gitlab_create_mr_approval_rule(
 
     Returns the new rule's id, name, approvals_required, and approvers.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {
-            "name": name,
-            "approvals_required": approvals_required,
-        }
-        if user_ids:
-            params["user_ids"] = user_ids
-        if group_ids:
-            params["group_ids"] = group_ids
-        data = await _get_client(ctx).create_mr_approval_rule(project_id, mr_iid, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_mr_approval_rule(
+            project_id,
+            mr_iid,
+            _params(
+                name=name,
+                approvals_required=approvals_required,
+                user_ids=user_ids,
+                group_ids=group_ids,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_mr_approval_rule(
     ctx: Context,
     project_id: Annotated[
@@ -571,27 +581,26 @@ async def gitlab_update_mr_approval_rule(
     group_ids: Annotated[list[int] | None, Field(description="Group IDs")] = None,
 ) -> str:
     """Update a merge-request-level approval rule. Returns the updated rule object."""
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if name is not None:
-            params["name"] = name
-        if approvals_required is not None:
-            params["approvals_required"] = approvals_required
-        if user_ids is not None:
-            params["user_ids"] = user_ids
-        if group_ids is not None:
-            params["group_ids"] = group_ids
-        data = await _get_client(ctx).update_mr_approval_rule(project_id, mr_iid, rule_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_mr_approval_rule(
+            project_id,
+            mr_iid,
+            rule_id,
+            _params(
+                name=name,
+                approvals_required=approvals_required,
+                user_ids=user_ids,
+                group_ids=group_ids,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_mr_approval_rule(
     ctx: Context,
     project_id: Annotated[
@@ -604,12 +613,8 @@ async def gitlab_delete_mr_approval_rule(
 
     Returns a {status: deleted, rule_id} confirmation.
     """
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_mr_approval_rule(project_id, mr_iid, rule_id)
-        return _ok({"status": "deleted", "rule_id": rule_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_mr_approval_rule(project_id, mr_iid, rule_id)
+    return _ok({"status": "deleted", "rule_id": rule_id})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -621,6 +626,7 @@ async def gitlab_delete_mr_approval_rule(
     tags={"gitlab", "groups", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_groups(
     ctx: Context,
     search: Annotated[str | None, Field(description="Search by name")] = None,
@@ -633,23 +639,17 @@ async def gitlab_list_groups(
 
     Returns id, name, full_path, parent_id, visibility, web_url per group.
     """
-    try:
-        params: dict[str, Any] = {}
-        if search:
-            params["search"] = search
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_groups(params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_groups(
+        _params(search=search, per_page=per_page, page=page)
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "groups", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_group(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID or URL-encoded path", min_length=1)],
@@ -658,48 +658,37 @@ async def gitlab_get_group(
 
     Returns id, name, full_path, visibility, web_url, and subgroup/membership counts.
     """
-    try:
-        data = await _get_client(ctx).get_group(group_id)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_group(group_id))
 
 
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_share_project_with_group(
     ctx: Context,
     project_id: Annotated[
         str, Field(description="Project ID, path, or full GitLab URL", min_length=1)
     ],
     group_id: Annotated[int, Field(description="Group ID to share with")],
-    access_level: Annotated[
-        str, Field(description="guest, reporter, developer, maintainer, or owner")
-    ],
+    access_level: AccessLevel,
 ) -> str:
     """Grant a group access to a project at the given access level.
 
     Returns a {status: shared, project_id, group_id} confirmation.
     """
-    try:
-        _check_write(ctx)
-        level = ACCESS_LEVELS.get(access_level.lower())
-        if level is None:
-            return _ok(
-                {"error": f"Invalid access level: {access_level}. Use: {', '.join(ACCESS_LEVELS)}"}
-            )
-        await _get_client(ctx).share_project_with_group(project_id, group_id, level)
-        return _ok({"status": "shared", "project_id": project_id, "group_id": group_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).share_project_with_group(
+        project_id, group_id, ACCESS_LEVELS[access_level]
+    )
+    return _ok({"status": "shared", "project_id": project_id, "group_id": group_id})
 
 
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_unshare_project_with_group(
     ctx: Context,
     project_id: Annotated[
@@ -711,59 +700,44 @@ async def gitlab_unshare_project_with_group(
 
     Returns a {status: unshared, project_id, group_id} confirmation.
     """
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).unshare_project_with_group(project_id, group_id)
-        return _ok({"status": "unshared", "project_id": project_id, "group_id": group_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).unshare_project_with_group(project_id, group_id)
+    return _ok({"status": "unshared", "project_id": project_id, "group_id": group_id})
 
 
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_share_group_with_group(
     ctx: Context,
     target_group_id: Annotated[str, Field(description="Target group ID or path")],
     source_group_id: Annotated[int, Field(description="Source group ID to share")],
-    access_level: Annotated[
-        str, Field(description="guest, reporter, developer, maintainer, or owner")
-    ],
+    access_level: AccessLevel,
 ) -> str:
     """Grant one group access to another group at the given access level.
 
     Returns the share record.
     """
-    try:
-        _check_write(ctx)
-        level = ACCESS_LEVELS.get(access_level.lower())
-        if level is None:
-            return _ok(
-                {"error": f"Invalid access level: {access_level}. Use: {', '.join(ACCESS_LEVELS)}"}
-            )
-        await _get_client(ctx).share_group_with_group(target_group_id, source_group_id, level)
-        return _ok({"status": "shared"})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).share_group_with_group(
+        target_group_id, source_group_id, ACCESS_LEVELS[access_level]
+    )
+    return _ok({"status": "shared"})
 
 
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_unshare_group_with_group(
     ctx: Context,
     target_group_id: Annotated[str, Field(description="Target group ID or path")],
     source_group_id: Annotated[int, Field(description="Source group ID to remove")],
 ) -> str:
     """Revoke a group-to-group share. Returns a {status: unshared} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).unshare_group_with_group(target_group_id, source_group_id)
-        return _ok({"status": "unshared"})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).unshare_group_with_group(target_group_id, source_group_id)
+    return _ok({"status": "unshared"})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -775,6 +749,7 @@ async def gitlab_unshare_group_with_group(
     tags={"gitlab", "branches", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_branches(
     ctx: Context,
     project_id: Annotated[
@@ -790,23 +765,17 @@ async def gitlab_list_branches(
 
     Returns name, commit sha, protected, default, and merged flags per branch.
     """
-    try:
-        params: dict[str, Any] = {}
-        if search:
-            params["search"] = search
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_branches(project_id, params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_branches(
+        project_id, _params(search=search, per_page=per_page, page=page)
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "branches", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_branch(
     ctx: Context,
     project_id: Annotated[
@@ -819,18 +788,14 @@ async def gitlab_create_branch(
 
     Returns the new branch's name, commit sha, and protection status.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).create_branch(project_id, branch_name, ref)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).create_branch(project_id, branch_name, ref))
 
 
 @mcp.tool(
     tags={"gitlab", "branches", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_branch(
     ctx: Context,
     project_id: Annotated[
@@ -839,12 +804,8 @@ async def gitlab_delete_branch(
     branch_name: Annotated[str, Field(description="Branch name to delete", min_length=1)],
 ) -> str:
     """Delete a branch from a project. Returns a {status: deleted, branch} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_branch(project_id, branch_name)
-        return _ok({"status": "deleted", "branch": branch_name})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_branch(project_id, branch_name)
+    return _ok({"status": "deleted", "branch": branch_name})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -856,6 +817,7 @@ async def gitlab_delete_branch(
     tags={"gitlab", "commits", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_commits(
     ctx: Context,
     project_id: Annotated[
@@ -874,29 +836,20 @@ async def gitlab_list_commits(
 
     Returns id, short_id, title, author_name, authored_date, web_url per commit.
     """
-    try:
-        params: dict[str, Any] = {}
-        if ref_name:
-            params["ref_name"] = ref_name
-        if since:
-            params["since"] = since
-        if until:
-            params["until"] = until
-        if path:
-            params["path"] = path
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_commits(project_id, params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_commits(
+        project_id,
+        _params(
+            ref_name=ref_name, since=since, until=until, path=path, per_page=per_page, page=page
+        ),
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "commits", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_commit(
     ctx: Context,
     project_id: Annotated[
@@ -910,21 +863,19 @@ async def gitlab_get_commit(
     Returns id, short_id, title, message, author, committed_date, web_url
     (and diffs when include_diff=true).
     """
-    try:
-        client = _get_client(ctx)
-        commit = await client.get_commit(project_id, sha)
-        if include_diff:
-            diff = await client.get_commit_diff(project_id, sha)
-            commit["diffs"] = diff
-        return _ok(commit)
-    except Exception as e:
-        return _err(e)
+    client = _get_client(ctx)
+    commit = await client.get_commit(project_id, sha)
+    if include_diff:
+        diff = await client.get_commit_diff(project_id, sha)
+        commit["diffs"] = diff
+    return _ok(commit)
 
 
 @mcp.tool(
     tags={"gitlab", "commits", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_commit(
     ctx: Context,
     project_id: Annotated[
@@ -947,25 +898,24 @@ async def gitlab_create_commit(
 
     Returns the new commit's id, short_id, title, and parent_ids.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {
-            "branch": branch,
-            "commit_message": commit_message,
-            "actions": actions,
-        }
-        if start_branch:
-            params["start_branch"] = start_branch
-        data = await _get_client(ctx).create_commit(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_commit(
+            project_id,
+            _params(
+                branch=branch,
+                commit_message=commit_message,
+                actions=actions,
+                start_branch=start_branch,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "commits", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_compare(
     ctx: Context,
     project_id: Annotated[
@@ -980,11 +930,7 @@ async def gitlab_compare(
 
     Returns commits, diffs, compare_timeout, and compare_same_ref flags.
     """
-    try:
-        data = await _get_client(ctx).compare(project_id, from_ref, to_ref)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).compare(project_id, from_ref, to_ref))
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -996,6 +942,7 @@ async def gitlab_compare(
     tags={"gitlab", "merge_requests", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_mrs(
     ctx: Context,
     project_id: Annotated[
@@ -1016,33 +963,27 @@ async def gitlab_list_mrs(
 
     Returns iid, title, state, source_branch, target_branch, author, web_url per MR.
     """
-    try:
-        params: dict[str, Any] = {}
-        if state:
-            params["state"] = state
-        if scope:
-            params["scope"] = scope
-        if source_branch:
-            params["source_branch"] = source_branch
-        if target_branch:
-            params["target_branch"] = target_branch
-        if search:
-            params["search"] = search
-        if labels:
-            params["labels"] = labels
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_merge_requests(project_id, params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_merge_requests(
+        project_id,
+        _params(
+            state=state,
+            scope=scope,
+            source_branch=source_branch,
+            target_branch=target_branch,
+            search=search,
+            labels=labels,
+            per_page=per_page,
+            page=page,
+        ),
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1054,17 +995,14 @@ async def gitlab_get_mr(
 
     Returns title, state, source/target branches, author, diff_refs, and merge status.
     """
-    try:
-        data = await _get_client(ctx).get_merge_request(project_id, mr_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_merge_request(project_id, mr_iid))
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1085,33 +1023,28 @@ async def gitlab_create_mr(
 
     Returns the new MR's iid, title, state, source_branch, target_branch, and web_url.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {
-            "source_branch": source_branch,
-            "target_branch": target_branch,
-            "title": title,
-        }
-        if description is not None:
-            params["description"] = description
-        if draft is not None:
-            params["draft"] = draft
-        if squash is not None:
-            params["squash"] = squash
-        if remove_source_branch is not None:
-            params["remove_source_branch"] = remove_source_branch
-        if labels is not None:
-            params["labels"] = labels
-        data = await _get_client(ctx).create_merge_request(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_merge_request(
+            project_id,
+            _params(
+                source_branch=source_branch,
+                target_branch=target_branch,
+                title=title,
+                description=description,
+                draft=draft,
+                squash=squash,
+                remove_source_branch=remove_source_branch,
+                labels=labels,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1133,35 +1066,29 @@ async def gitlab_update_mr(
 
     Returns the updated MR object.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if title is not None:
-            params["title"] = title
-        if description is not None:
-            params["description"] = description
-        if target_branch is not None:
-            params["target_branch"] = target_branch
-        if labels is not None:
-            params["labels"] = labels
-        if squash is not None:
-            params["squash"] = squash
-        if remove_source_branch is not None:
-            params["remove_source_branch"] = remove_source_branch
-        if draft is not None:
-            params["draft"] = draft
-        if state_event is not None:
-            params["state_event"] = state_event
-        data = await _get_client(ctx).update_merge_request(project_id, mr_iid, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_merge_request(
+            project_id,
+            mr_iid,
+            _params(
+                title=title,
+                description=description,
+                target_branch=target_branch,
+                labels=labels,
+                squash=squash,
+                remove_source_branch=remove_source_branch,
+                draft=draft,
+                state_event=state_event,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_merge_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1186,29 +1113,26 @@ async def gitlab_merge_mr(
 
     Returns the merged MR with state=merged and merge_commit_sha.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if squash is not None:
-            params["squash"] = squash
-        if delete_source_branch is not None:
-            params["should_remove_source_branch"] = delete_source_branch
-        if merge_commit_message is not None:
-            params["merge_commit_message"] = merge_commit_message
-        if squash_commit_message is not None:
-            params["squash_commit_message"] = squash_commit_message
-        if merge_when_pipeline_succeeds is not None:
-            params["merge_when_pipeline_succeeds"] = merge_when_pipeline_succeeds
-        data = await _get_client(ctx).merge_merge_request(project_id, mr_iid, params or None)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).merge_merge_request(
+            project_id,
+            mr_iid,
+            _params(
+                squash=squash,
+                should_remove_source_branch=delete_source_branch,
+                merge_commit_message=merge_commit_message,
+                squash_commit_message=squash_commit_message,
+                merge_when_pipeline_succeeds=merge_when_pipeline_succeeds,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_merge_mr_sequence(
     ctx: Context,
     project_id: Annotated[
@@ -1228,18 +1152,17 @@ async def gitlab_merge_mr_sequence(
 
     Returns a per-MR result list with merged/failed status and any error.
     """
+    # Keeps its own expected-error handler: the envelope must say which MRs
+    # already merged before the failure. Bugs still fall through to tool_result.
     merged: list[int] = []
     try:
         _check_write(ctx)
         client = _get_client(ctx)
-        params: dict[str, Any] = {}
-        if squash is not None:
-            params["squash"] = squash
-        if delete_source_branch is not None:
-            params["should_remove_source_branch"] = delete_source_branch
-        if merge_when_pipeline_succeeds is not None:
-            params["merge_when_pipeline_succeeds"] = merge_when_pipeline_succeeds
-
+        params = _params(
+            squash=squash,
+            should_remove_source_branch=delete_source_branch,
+            merge_when_pipeline_succeeds=merge_when_pipeline_succeeds,
+        )
         for iid in mr_iids:
             if require_mergeable_status:
                 mr = await client.get_merge_request(project_id, iid)
@@ -1251,11 +1174,10 @@ async def gitlab_merge_mr_sequence(
                             "merged_so_far": merged,
                         }
                     )
-            await client.merge_merge_request(project_id, iid, params or None)
+            await client.merge_merge_request(project_id, iid, params)
             merged.append(iid)
-
         return _ok({"status": "all_merged", "merged": merged})
-    except Exception as e:
+    except GitLabError as e:
         detail = json.loads(_err(e))
         detail["merged_so_far"] = merged
         return _ok(detail)
@@ -1265,6 +1187,7 @@ async def gitlab_merge_mr_sequence(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_rebase_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1277,18 +1200,14 @@ async def gitlab_rebase_mr(
 
     Returns {rebase_in_progress: true}.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).rebase_merge_request(project_id, mr_iid, skip_ci)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).rebase_merge_request(project_id, mr_iid, skip_ci))
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_mr_changes(
     ctx: Context,
     project_id: Annotated[
@@ -1297,11 +1216,7 @@ async def gitlab_mr_changes(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Get file changes of a merge request. Returns list of diffs with old/new paths and content."""
-    try:
-        data = await _get_client(ctx).get_merge_request_changes(project_id, mr_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_merge_request_changes(project_id, mr_iid))
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1313,6 +1228,7 @@ async def gitlab_mr_changes(
     tags={"gitlab", "notes", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_mr_notes(
     ctx: Context,
     project_id: Annotated[
@@ -1331,19 +1247,17 @@ async def gitlab_list_mr_notes(
     system notes therefore returns count 0 with has_more true -- keep following
     next_page rather than concluding the MR has no comments.
     """
-    try:
-        data, next_page = await _get_client(ctx).list_mr_notes(project_id, mr_iid, page)
-        if not include_system:
-            data = [n for n in data if not n.get("system", False)]
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_mr_notes(project_id, mr_iid, page)
+    if not include_system:
+        data = [n for n in data if not n.get("system", False)]
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_add_mr_note(
     ctx: Context,
     project_id: Annotated[
@@ -1359,18 +1273,14 @@ async def gitlab_add_mr_note(
 
     Returns the new note's id, body, author, and created_at.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).add_mr_note(project_id, mr_iid, body, internal)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).add_mr_note(project_id, mr_iid, body, internal))
 
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_mr_note(
     ctx: Context,
     project_id: Annotated[
@@ -1380,18 +1290,15 @@ async def gitlab_delete_mr_note(
     note_id: Annotated[int, Field(description="Note ID to delete")],
 ) -> str:
     """Delete a comment from a merge request. Returns a {status: deleted, note_id} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_mr_note(project_id, mr_iid, note_id)
-        return _ok({"status": "deleted", "note_id": note_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_mr_note(project_id, mr_iid, note_id)
+    return _ok({"status": "deleted", "note_id": note_id})
 
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_mr_note(
     ctx: Context,
     project_id: Annotated[
@@ -1405,18 +1312,14 @@ async def gitlab_update_mr_note(
 
     Returns the updated note's id, body, author, and updated_at.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).update_mr_note(project_id, mr_iid, note_id, body)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).update_mr_note(project_id, mr_iid, note_id, body))
 
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_award_emoji(
     ctx: Context,
     project_id: Annotated[
@@ -1427,18 +1330,14 @@ async def gitlab_award_emoji(
     emoji: Annotated[str, Field(description="Emoji name (e.g. thumbsup, 100, eyes)", min_length=1)],
 ) -> str:
     """Add an emoji reaction to an MR note. Returns the new award's id, name, and user."""
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).award_emoji(project_id, mr_iid, note_id, emoji)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).award_emoji(project_id, mr_iid, note_id, emoji))
 
 
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_remove_emoji(
     ctx: Context,
     project_id: Annotated[
@@ -1449,12 +1348,8 @@ async def gitlab_remove_emoji(
     award_id: Annotated[int, Field(description="Award emoji ID to remove")],
 ) -> str:
     """Remove an emoji reaction from an MR note. Returns a {status: removed} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_award_emoji(project_id, mr_iid, note_id, award_id)
-        return _ok({"status": "removed", "award_id": award_id})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_award_emoji(project_id, mr_iid, note_id, award_id)
+    return _ok({"status": "removed", "award_id": award_id})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1466,6 +1361,7 @@ async def gitlab_remove_emoji(
     tags={"gitlab", "discussions", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_mr_discussions(
     ctx: Context,
     project_id: Annotated[
@@ -1481,23 +1377,21 @@ async def gitlab_list_mr_discussions(
     `count` is post-filter while `has_more` describes the unfiltered server
     page, so a page of only system threads returns count 0 with has_more true.
     """
-    try:
-        data, next_page = await _get_client(ctx).list_mr_discussions(project_id, mr_iid, page)
-        # Filter out system-only discussions
-        filtered = []
-        for d in data:
-            notes = d.get("notes", [])
-            if any(not n.get("system", False) for n in notes):
-                filtered.append(d)
-        return _paginated(filtered, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_mr_discussions(project_id, mr_iid, page)
+    # Filter out system-only discussions
+    filtered = []
+    for d in data:
+        notes = d.get("notes", [])
+        if any(not n.get("system", False) for n in notes):
+            filtered.append(d)
+    return _paginated(filtered, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "discussions", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_mr_discussion(
     ctx: Context,
     project_id: Annotated[
@@ -1524,46 +1418,42 @@ async def gitlab_create_mr_discussion(
 
     For inline comments, provide diff_refs and line info.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"body": body}
+    params: dict[str, Any] = {"body": body}
 
-        # Build position for inline comments
-        if base_sha and head_sha and start_sha and new_path:
-            position: dict[str, Any] = {
-                "base_sha": base_sha,
-                "start_sha": start_sha,
-                "head_sha": head_sha,
-                "position_type": "text",
-                "new_path": new_path,
-                "old_path": old_path or new_path,
+    # Build position for inline comments
+    if base_sha and head_sha and start_sha and new_path:
+        position: dict[str, Any] = {
+            "base_sha": base_sha,
+            "start_sha": start_sha,
+            "head_sha": head_sha,
+            "position_type": "text",
+            "new_path": new_path,
+            "old_path": old_path or new_path,
+        }
+        if new_line is not None:
+            position["new_line"] = new_line
+        if old_line is not None:
+            position["old_line"] = old_line
+
+        # Multi-line range
+        if line_range_start_line is not None and line_range_end_line is not None:
+            range_type = line_range_type or "new"
+            line_key = "new_line" if range_type == "new" else "old_line"
+            position["line_range"] = {
+                "start": {"type": range_type, line_key: line_range_start_line},
+                "end": {"type": range_type, line_key: line_range_end_line},
             }
-            if new_line is not None:
-                position["new_line"] = new_line
-            if old_line is not None:
-                position["old_line"] = old_line
 
-            # Multi-line range
-            if line_range_start_line is not None and line_range_end_line is not None:
-                range_type = line_range_type or "new"
-                line_key = "new_line" if range_type == "new" else "old_line"
-                position["line_range"] = {
-                    "start": {"type": range_type, line_key: line_range_start_line},
-                    "end": {"type": range_type, line_key: line_range_end_line},
-                }
+        params["position"] = position
 
-            params["position"] = position
-
-        data = await _get_client(ctx).create_mr_discussion(project_id, mr_iid, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).create_mr_discussion(project_id, mr_iid, params))
 
 
 @mcp.tool(
     tags={"gitlab", "discussions", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_reply_to_discussion(
     ctx: Context,
     project_id: Annotated[
@@ -1577,18 +1467,14 @@ async def gitlab_reply_to_discussion(
 
     Returns the new note's id, body, author, and created_at.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).reply_to_discussion(project_id, mr_iid, discussion_id, body)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).reply_to_discussion(project_id, mr_iid, discussion_id, body))
 
 
 @mcp.tool(
     tags={"gitlab", "discussions", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_resolve_discussion(
     ctx: Context,
     project_id: Annotated[
@@ -1602,14 +1488,8 @@ async def gitlab_resolve_discussion(
 
     Returns the updated discussion with its resolved flag and notes.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).resolve_discussion(
-            project_id, mr_iid, discussion_id, resolved
-        )
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    data = await _get_client(ctx).resolve_discussion(project_id, mr_iid, discussion_id, resolved)
+    return _ok(data)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1621,6 +1501,7 @@ async def gitlab_resolve_discussion(
     tags={"gitlab", "merge_requests", "approvals", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
 )
+@tool_result(write=True)
 async def gitlab_approve_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1636,18 +1517,14 @@ async def gitlab_approve_mr(
 
     Returns the updated approval state (approved_by, approvals_left).
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).approve_merge_request(project_id, mr_iid, sha)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).approve_merge_request(project_id, mr_iid, sha))
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "approvals", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
 )
+@tool_result(write=True)
 async def gitlab_unapprove_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1659,18 +1536,14 @@ async def gitlab_unapprove_mr(
 
     Returns the updated approval state.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).unapprove_merge_request(project_id, mr_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).unapprove_merge_request(project_id, mr_iid))
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "approvals", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_mr_approvals(
     ctx: Context,
     project_id: Annotated[
@@ -1682,17 +1555,14 @@ async def gitlab_get_mr_approvals(
 
     Returns approved_by, approvals_required, approvals_left, and matching rules.
     """
-    try:
-        data = await _get_client(ctx).get_mr_approvals(project_id, mr_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_mr_approvals(project_id, mr_iid))
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "pipelines", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_mr_pipelines(
     ctx: Context,
     project_id: Annotated[
@@ -1706,17 +1576,15 @@ async def gitlab_list_mr_pipelines(
 
     Returns id, status, ref, sha, source, web_url per pipeline.
     """
-    try:
-        data, next_page = await _get_client(ctx).list_mr_pipelines(project_id, mr_iid, page)
-        return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_mr_pipelines(project_id, mr_iid, page)
+    return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "commits", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_mr_commits(
     ctx: Context,
     project_id: Annotated[
@@ -1729,17 +1597,15 @@ async def gitlab_list_mr_commits(
 
     Returns id, short_id, title, author_name, authored_date per commit.
     """
-    try:
-        data, next_page = await _get_client(ctx).list_mr_commits(project_id, mr_iid, page)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_mr_commits(project_id, mr_iid, page)
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
 )
+@tool_result(write=True)
 async def gitlab_subscribe_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1751,18 +1617,14 @@ async def gitlab_subscribe_mr(
 
     Returns the updated MR object.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).subscribe_mr(project_id, mr_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).subscribe_mr(project_id, mr_iid))
 
 
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": False},
 )
+@tool_result(write=True)
 async def gitlab_unsubscribe_mr(
     ctx: Context,
     project_id: Annotated[
@@ -1774,12 +1636,7 @@ async def gitlab_unsubscribe_mr(
 
     Returns the updated MR object.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).unsubscribe_mr(project_id, mr_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).unsubscribe_mr(project_id, mr_iid))
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1791,6 +1648,7 @@ async def gitlab_unsubscribe_mr(
     tags={"gitlab", "pipelines", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_pipelines(
     ctx: Context,
     project_id: Annotated[
@@ -1811,27 +1669,17 @@ async def gitlab_list_pipelines(
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List pipelines for a project. Returns id, status, ref, source, timing, web_url."""
-    try:
-        params: dict[str, Any] = {}
-        if ref:
-            params["ref"] = ref
-        if status:
-            params["status"] = status
-        if source:
-            params["source"] = source
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_pipelines(project_id, params or None)
-        return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_pipelines(
+        project_id, _params(ref=ref, status=status, source=source, per_page=per_page, page=page)
+    )
+    return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_pipeline(
     ctx: Context,
     project_id: Annotated[
@@ -1846,23 +1694,21 @@ async def gitlab_get_pipeline(
     Returns id, status, ref, timing, web_url.
     Jobs include id, name, stage, status, timing, failure_reason, web_url.
     """
-    try:
-        client = _get_client(ctx)
-        pipeline = await client.get_pipeline(project_id, pipeline_id)
-        if slim:
-            pipeline = _slim_pipeline(pipeline)
-        if include_jobs:
-            jobs, _ = await client.list_pipeline_jobs(project_id, pipeline_id)
-            pipeline["jobs"] = [_slim_job(j) for j in jobs] if slim else jobs
-        return _ok(pipeline)
-    except Exception as e:
-        return _err(e)
+    client = _get_client(ctx)
+    pipeline = await client.get_pipeline(project_id, pipeline_id)
+    if slim:
+        pipeline = _slim_pipeline(pipeline)
+    if include_jobs:
+        jobs, _ = await client.list_pipeline_jobs(project_id, pipeline_id)
+        pipeline["jobs"] = [_slim_job(j) for j in jobs] if slim else jobs
+    return _ok(pipeline)
 
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_pipeline(
     ctx: Context,
     project_id: Annotated[
@@ -1878,18 +1724,14 @@ async def gitlab_create_pipeline(
 
     Returns the new pipeline's id, status, ref, sha, source, web_url.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).create_pipeline(project_id, ref, variables)
-        return _ok(_slim_pipeline(data))
-    except Exception as e:
-        return _err(e)
+    return _ok(_slim_pipeline(await _get_client(ctx).create_pipeline(project_id, ref, variables)))
 
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_retry_pipeline(
     ctx: Context,
     project_id: Annotated[
@@ -1901,18 +1743,14 @@ async def gitlab_retry_pipeline(
 
     Returns the updated pipeline with status and timing.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).retry_pipeline(project_id, pipeline_id)
-        return _ok(_slim_pipeline(data))
-    except Exception as e:
-        return _err(e)
+    return _ok(_slim_pipeline(await _get_client(ctx).retry_pipeline(project_id, pipeline_id)))
 
 
 @mcp.tool(
     tags={"gitlab", "pipelines", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_cancel_pipeline(
     ctx: Context,
     project_id: Annotated[
@@ -1921,12 +1759,7 @@ async def gitlab_cancel_pipeline(
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
 ) -> str:
     """Cancel a running pipeline. Returns the updated pipeline with status=canceled."""
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).cancel_pipeline(project_id, pipeline_id)
-        return _ok(_slim_pipeline(data))
-    except Exception as e:
-        return _err(e)
+    return _ok(_slim_pipeline(await _get_client(ctx).cancel_pipeline(project_id, pipeline_id)))
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1938,6 +1771,7 @@ async def gitlab_cancel_pipeline(
     tags={"gitlab", "jobs", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_retry_job(
     ctx: Context,
     project_id: Annotated[
@@ -1946,18 +1780,14 @@ async def gitlab_retry_job(
     job_id: Annotated[int, Field(description="Job ID")],
 ) -> str:
     """Retry a failed job. Returns the new job's id, status, name, stage, and web_url."""
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).retry_job(project_id, job_id)
-        return _ok(_slim_job(data))
-    except Exception as e:
-        return _err(e)
+    return _ok(_slim_job(await _get_client(ctx).retry_job(project_id, job_id)))
 
 
 @mcp.tool(
     tags={"gitlab", "jobs", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_play_job(
     ctx: Context,
     project_id: Annotated[
@@ -1973,18 +1803,14 @@ async def gitlab_play_job(
 
     Returns the started job's id, status, name, and web_url.
     """
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).play_job(project_id, job_id, variables)
-        return _ok(_slim_job(data))
-    except Exception as e:
-        return _err(e)
+    return _ok(_slim_job(await _get_client(ctx).play_job(project_id, job_id, variables)))
 
 
 @mcp.tool(
     tags={"gitlab", "jobs", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_cancel_job(
     ctx: Context,
     project_id: Annotated[
@@ -1993,18 +1819,14 @@ async def gitlab_cancel_job(
     job_id: Annotated[int, Field(description="Job ID")],
 ) -> str:
     """Cancel a running job. Returns the updated job with status=canceled."""
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).cancel_job(project_id, job_id)
-        return _ok(_slim_job(data))
-    except Exception as e:
-        return _err(e)
+    return _ok(_slim_job(await _get_client(ctx).cancel_job(project_id, job_id)))
 
 
 @mcp.tool(
     tags={"gitlab", "jobs", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_job_log(
     ctx: Context,
     project_id: Annotated[
@@ -2020,20 +1842,17 @@ async def gitlab_get_job_log(
 
     Returns {log, total_lines, shown_lines}. Pass tail_lines=0 for the whole log.
     """
-    try:
-        log_text = await _get_client(ctx).get_job_log(project_id, job_id)
-        lines = log_text.splitlines()
-        if tail_lines and len(lines) > tail_lines:
-            lines = lines[-tail_lines:]
-        return _ok(
-            {
-                "log": "\n".join(lines),
-                "total_lines": len(log_text.splitlines()),
-                "shown_lines": len(lines),
-            }
-        )
-    except Exception as e:
-        return _err(e)
+    log_text = await _get_client(ctx).get_job_log(project_id, job_id)
+    lines = log_text.splitlines()
+    if tail_lines and len(lines) > tail_lines:
+        lines = lines[-tail_lines:]
+    return _ok(
+        {
+            "log": "\n".join(lines),
+            "total_lines": len(log_text.splitlines()),
+            "shown_lines": len(lines),
+        }
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -2045,6 +1864,7 @@ async def gitlab_get_job_log(
     tags={"gitlab", "tags", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_tags(
     ctx: Context,
     project_id: Annotated[
@@ -2062,27 +1882,18 @@ async def gitlab_list_tags(
 
     Returns name, message, target sha, commit summary, and any attached release per tag.
     """
-    try:
-        params: dict[str, Any] = {}
-        if search:
-            params["search"] = search
-        if order_by:
-            params["order_by"] = order_by
-        if sort:
-            params["sort"] = sort
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_tags(project_id, params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_tags(
+        project_id,
+        _params(search=search, order_by=order_by, sort=sort, per_page=per_page, page=page),
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "tags", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_tag(
     ctx: Context,
     project_id: Annotated[
@@ -2091,17 +1902,14 @@ async def gitlab_get_tag(
     tag_name: Annotated[str, Field(description="Tag name", min_length=1)],
 ) -> str:
     """Get a tag's details. Returns name, message, target commit, and any attached release."""
-    try:
-        data = await _get_client(ctx).get_tag(project_id, tag_name)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_tag(project_id, tag_name))
 
 
 @mcp.tool(
     tags={"gitlab", "tags", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_tag(
     ctx: Context,
     project_id: Annotated[
@@ -2115,21 +1923,18 @@ async def gitlab_create_tag(
 
     Returns the new tag's name, message, target, and commit.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"tag_name": tag_name, "ref": ref}
-        if message:
-            params["message"] = message
-        data = await _get_client(ctx).create_tag(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_tag(
+            project_id, _params(tag_name=tag_name, ref=ref, message=message)
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "tags", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_tag(
     ctx: Context,
     project_id: Annotated[
@@ -2138,12 +1943,8 @@ async def gitlab_delete_tag(
     tag_name: Annotated[str, Field(description="Tag name to delete", min_length=1)],
 ) -> str:
     """Delete a tag. Returns a {status: deleted, tag} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_tag(project_id, tag_name)
-        return _ok({"status": "deleted", "tag": tag_name})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_tag(project_id, tag_name)
+    return _ok({"status": "deleted", "tag": tag_name})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -2155,6 +1956,7 @@ async def gitlab_delete_tag(
     tags={"gitlab", "releases", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_releases(
     ctx: Context,
     project_id: Annotated[
@@ -2169,21 +1971,17 @@ async def gitlab_list_releases(
 
     Returns tag_name, name, description, created_at, released_at, and assets per release.
     """
-    try:
-        params: dict[str, Any] = {}
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_releases(project_id, params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_releases(
+        project_id, _params(per_page=per_page, page=page)
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "releases", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_release(
     ctx: Context,
     project_id: Annotated[
@@ -2195,17 +1993,14 @@ async def gitlab_get_release(
 
     Returns name, description, tag_name, created_at, and assets (links, sources).
     """
-    try:
-        data = await _get_client(ctx).get_release(project_id, tag_name)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_release(project_id, tag_name))
 
 
 @mcp.tool(
     tags={"gitlab", "releases", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_release(
     ctx: Context,
     project_id: Annotated[
@@ -2225,29 +2020,22 @@ async def gitlab_create_release(
 
     Returns the new release with tag_name, name, description, and assets.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"tag_name": tag_name}
-        if name is not None:
-            params["name"] = name
-        if description is not None:
-            params["description"] = description
-        if ref is not None:
-            params["ref"] = ref
-        if released_at is not None:
-            params["released_at"] = released_at
-        if links is not None:
-            params["assets"] = {"links": links}
-        data = await _get_client(ctx).create_release(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    params = _params(
+        tag_name=tag_name,
+        name=name,
+        description=description,
+        ref=ref,
+        released_at=released_at,
+        assets={"links": links} if links is not None else None,
+    )
+    return _ok(await _get_client(ctx).create_release(project_id, params))
 
 
 @mcp.tool(
     tags={"gitlab", "releases", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_release(
     ctx: Context,
     project_id: Annotated[
@@ -2259,25 +2047,20 @@ async def gitlab_update_release(
     released_at: Annotated[str | None, Field(description="New release date (ISO 8601)")] = None,
 ) -> str:
     """Update a release's name, description, or release date. Returns the updated release."""
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if name is not None:
-            params["name"] = name
-        if description is not None:
-            params["description"] = description
-        if released_at is not None:
-            params["released_at"] = released_at
-        data = await _get_client(ctx).update_release(project_id, tag_name, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_release(
+            project_id,
+            tag_name,
+            _params(name=name, description=description, released_at=released_at),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "releases", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_release(
     ctx: Context,
     project_id: Annotated[
@@ -2289,12 +2072,8 @@ async def gitlab_delete_release(
 
     Returns a {status: deleted, tag_name} confirmation.
     """
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_release(project_id, tag_name)
-        return _ok({"status": "deleted", "tag_name": tag_name})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_release(project_id, tag_name)
+    return _ok({"status": "deleted", "tag_name": tag_name})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -2306,6 +2085,7 @@ async def gitlab_delete_release(
     tags={"gitlab", "variables", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_variables(
     ctx: Context,
     project_id: Annotated[
@@ -2318,20 +2098,18 @@ async def gitlab_list_variables(
     Returns key, value (shown as '***MASKED***' when masked), protected, masked,
     environment_scope per variable.
     """
-    try:
-        data, next_page = await _get_client(ctx).list_variables(project_id, page)
-        for var in data:
-            if var.get("masked"):
-                var["value"] = "***MASKED***"
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_variables(project_id, page)
+    for var in data:
+        if var.get("masked"):
+            var["value"] = "***MASKED***"
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_variable(
     ctx: Context,
     project_id: Annotated[
@@ -2355,31 +2133,28 @@ async def gitlab_create_variable(
     Returns the new variable's key, value (masked if applicable), protected, masked,
     environment_scope.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"key": key, "value": value}
-        if variable_type is not None:
-            params["variable_type"] = variable_type
-        if protected is not None:
-            params["protected"] = protected
-        if masked is not None:
-            params["masked"] = masked
-        if raw is not None:
-            params["raw"] = raw
-        if environment_scope is not None:
-            params["environment_scope"] = environment_scope
-        if description is not None:
-            params["description"] = description
-        data = await _get_client(ctx).create_variable(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_variable(
+            project_id,
+            _params(
+                key=key,
+                value=value,
+                variable_type=variable_type,
+                protected=protected,
+                masked=masked,
+                raw=raw,
+                environment_scope=environment_scope,
+                description=description,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_variable(
     ctx: Context,
     project_id: Annotated[
@@ -2401,31 +2176,27 @@ async def gitlab_update_variable(
 
     environment_scope selects which scoped variable to update; it does not change the scope.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"value": value}
-        if variable_type is not None:
-            params["variable_type"] = variable_type
-        if protected is not None:
-            params["protected"] = protected
-        if masked is not None:
-            params["masked"] = masked
-        if raw is not None:
-            params["raw"] = raw
-        if description is not None:
-            params["description"] = description
-        data = await _get_client(ctx).update_variable(
-            project_id, key, params, environment_scope=environment_scope
-        )
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    data = await _get_client(ctx).update_variable(
+        project_id,
+        key,
+        _params(
+            value=value,
+            variable_type=variable_type,
+            protected=protected,
+            masked=masked,
+            raw=raw,
+            description=description,
+        ),
+        environment_scope=environment_scope,
+    )
+    return _ok(data)
 
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_variable(
     ctx: Context,
     project_id: Annotated[
@@ -2435,12 +2206,8 @@ async def gitlab_delete_variable(
     environment_scope: Annotated[str | None, Field(description="Environment scope filter")] = None,
 ) -> str:
     """Delete a project CI/CD variable. Returns a {status: deleted, key} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_variable(project_id, key, environment_scope)
-        return _ok({"status": "deleted", "key": key})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_variable(project_id, key, environment_scope)
+    return _ok({"status": "deleted", "key": key})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -2452,6 +2219,7 @@ async def gitlab_delete_variable(
     tags={"gitlab", "variables", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_group_variables(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
@@ -2462,20 +2230,18 @@ async def gitlab_list_group_variables(
     Returns key, value (shown as '***MASKED***' when masked), protected, masked,
     environment_scope per variable.
     """
-    try:
-        data, next_page = await _get_client(ctx).list_group_variables(group_id, page)
-        for var in data:
-            if var.get("masked"):
-                var["value"] = "***MASKED***"
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_group_variables(group_id, page)
+    for var in data:
+        if var.get("masked"):
+            var["value"] = "***MASKED***"
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_group_variable(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
@@ -2493,31 +2259,28 @@ async def gitlab_create_group_variable(
     Returns the new variable's key, value (masked if applicable), protected, masked,
     environment_scope.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"key": key, "value": value}
-        if variable_type is not None:
-            params["variable_type"] = variable_type
-        if protected is not None:
-            params["protected"] = protected
-        if masked is not None:
-            params["masked"] = masked
-        if raw is not None:
-            params["raw"] = raw
-        if environment_scope is not None:
-            params["environment_scope"] = environment_scope
-        if description is not None:
-            params["description"] = description
-        data = await _get_client(ctx).create_group_variable(group_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_group_variable(
+            group_id,
+            _params(
+                key=key,
+                value=value,
+                variable_type=variable_type,
+                protected=protected,
+                masked=masked,
+                raw=raw,
+                environment_scope=environment_scope,
+                description=description,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_group_variable(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
@@ -2530,41 +2293,35 @@ async def gitlab_update_group_variable(
     description: Annotated[str | None, Field(description="Variable description")] = None,
 ) -> str:
     """Update a group CI/CD variable. Returns the updated variable object."""
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"value": value}
-        if variable_type is not None:
-            params["variable_type"] = variable_type
-        if protected is not None:
-            params["protected"] = protected
-        if masked is not None:
-            params["masked"] = masked
-        if raw is not None:
-            params["raw"] = raw
-        if description is not None:
-            params["description"] = description
-        data = await _get_client(ctx).update_group_variable(group_id, key, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_group_variable(
+            group_id,
+            key,
+            _params(
+                value=value,
+                variable_type=variable_type,
+                protected=protected,
+                masked=masked,
+                raw=raw,
+                description=description,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_delete_group_variable(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
 ) -> str:
     """Delete a group CI/CD variable. Returns a {status: deleted, key} confirmation."""
-    try:
-        _check_write(ctx)
-        await _get_client(ctx).delete_group_variable(group_id, key)
-        return _ok({"status": "deleted", "key": key})
-    except Exception as e:
-        return _err(e)
+    await _get_client(ctx).delete_group_variable(group_id, key)
+    return _ok({"status": "deleted", "key": key})
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -2576,6 +2333,7 @@ async def gitlab_delete_group_variable(
     tags={"gitlab", "issues", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_list_issues(
     ctx: Context,
     project_id: Annotated[
@@ -2594,29 +2352,25 @@ async def gitlab_list_issues(
 
     Returns iid, title, state, labels, author, web_url per issue.
     """
-    try:
-        params: dict[str, Any] = {}
-        if state:
-            params["state"] = state
-        if labels:
-            params["labels"] = labels
-        if search:
-            params["search"] = search
-        if assignee_id:
-            params["assignee_id"] = assignee_id
-        if per_page:
-            params["per_page"] = per_page
-        params["page"] = page
-        data, next_page = await _get_client(ctx).list_issues(project_id, params or None)
-        return _paginated(data, next_page)
-    except Exception as e:
-        return _err(e)
+    data, next_page = await _get_client(ctx).list_issues(
+        project_id,
+        _params(
+            state=state,
+            labels=labels,
+            search=search,
+            assignee_id=assignee_id,
+            per_page=per_page,
+            page=page,
+        ),
+    )
+    return _paginated(data, next_page)
 
 
 @mcp.tool(
     tags={"gitlab", "issues", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result
 async def gitlab_get_issue(
     ctx: Context,
     project_id: Annotated[
@@ -2628,17 +2382,14 @@ async def gitlab_get_issue(
 
     Returns iid, title, description, state, labels, assignees, author, milestone, due_date, web_url.
     """
-    try:
-        data = await _get_client(ctx).get_issue(project_id, issue_iid)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).get_issue(project_id, issue_iid))
 
 
 @mcp.tool(
     tags={"gitlab", "issues", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_create_issue(
     ctx: Context,
     project_id: Annotated[
@@ -2656,31 +2407,27 @@ async def gitlab_create_issue(
 
     Returns the new issue's iid, title, state, labels, assignees, author, web_url.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {"title": title}
-        if description is not None:
-            params["description"] = description
-        if labels is not None:
-            params["labels"] = labels
-        if assignee_ids is not None:
-            params["assignee_ids"] = assignee_ids
-        if milestone_id is not None:
-            params["milestone_id"] = milestone_id
-        if confidential is not None:
-            params["confidential"] = confidential
-        if weight is not None:
-            params["weight"] = weight
-        data = await _get_client(ctx).create_issue(project_id, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).create_issue(
+            project_id,
+            _params(
+                title=title,
+                description=description,
+                labels=labels,
+                assignee_ids=assignee_ids,
+                milestone_id=milestone_id,
+                confidential=confidential,
+                weight=weight,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "issues", "write"},
     annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_update_issue(
     ctx: Context,
     project_id: Annotated[
@@ -2698,31 +2445,27 @@ async def gitlab_update_issue(
 
     Returns the updated issue object.
     """
-    try:
-        _check_write(ctx)
-        params: dict[str, Any] = {}
-        if title is not None:
-            params["title"] = title
-        if description is not None:
-            params["description"] = description
-        if labels is not None:
-            params["labels"] = labels
-        if assignee_ids is not None:
-            params["assignee_ids"] = assignee_ids
-        if state_event is not None:
-            params["state_event"] = state_event
-        if weight is not None:
-            params["weight"] = weight
-        data = await _get_client(ctx).update_issue(project_id, issue_iid, params)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(
+        await _get_client(ctx).update_issue(
+            project_id,
+            issue_iid,
+            _params(
+                title=title,
+                description=description,
+                labels=labels,
+                assignee_ids=assignee_ids,
+                state_event=state_event,
+                weight=weight,
+            ),
+        )
+    )
 
 
 @mcp.tool(
     tags={"gitlab", "issues", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
 )
+@tool_result(write=True)
 async def gitlab_add_issue_comment(
     ctx: Context,
     project_id: Annotated[
@@ -2732,9 +2475,4 @@ async def gitlab_add_issue_comment(
     body: Annotated[str, Field(description="Comment body (markdown)", min_length=1)],
 ) -> str:
     """Post a comment on an issue. Returns the new note's id, body, author, and created_at."""
-    try:
-        _check_write(ctx)
-        data = await _get_client(ctx).add_issue_comment(project_id, issue_iid, body)
-        return _ok(data)
-    except Exception as e:
-        return _err(e)
+    return _ok(await _get_client(ctx).add_issue_comment(project_id, issue_iid, body))
