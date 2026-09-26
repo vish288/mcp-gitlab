@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 import pytest
+from fastmcp.exceptions import ToolError
 from httpx import Response
 
 
@@ -2388,16 +2389,21 @@ class TestDocstringContracts:
                 {"project_id": "123", "job_id": 1, "tail_lines": -5},
             )
 
-    async def test_share_group_with_group_invalid_level_lists_valid_levels(self, tool_client):
-        """Error message must list the valid levels, matching its project-share sibling."""
+    @pytest.mark.parametrize(
+        "name", ["gitlab_share_group_with_group", "gitlab_share_project_with_group"]
+    )
+    async def test_invalid_access_level_is_rejected_by_the_schema(self, tool_client, name):
+        """A bad level is an input error, not a successful result carrying an error key."""
         client, router = tool_client
-        result = await client.call_tool(
-            "gitlab_share_group_with_group",
-            {"target_group_id": "9", "source_group_id": 1, "access_level": "bogus"},
-        )
-        parsed = _parse(result)
-        assert "bogus" in parsed["error"]
-        assert "maintainer" in parsed["error"]
+        args = {"access_level": "bogus"}
+        if name == "gitlab_share_group_with_group":
+            args |= {"target_group_id": "9", "source_group_id": 1}
+        else:
+            args |= {"project_id": "9", "group_id": 1}
+        with pytest.raises(ToolError) as exc_info:
+            await client.call_tool(name, args)
+        assert "maintainer" in str(exc_info.value)
+        assert not router.calls
 
     async def test_tool_descriptions_have_no_blank_line_runs(self, tool_client):
         """Docstrings ship verbatim as MCP tool descriptions — no stray blank-line runs."""

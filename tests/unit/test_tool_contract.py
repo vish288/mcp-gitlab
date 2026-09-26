@@ -13,6 +13,7 @@ drives the same route to 404 so every tool's ``except`` arm actually executes an
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 from httpx import Response
@@ -692,3 +693,33 @@ async def test_forced_failure(tool_client, row):
 async def test_every_tool_has_a_row(tool_client):
     client, _router = tool_client
     assert {r[0] for r in ROWS} == {t.name for t in await client.list_tools()}
+
+
+async def test_bug_is_a_tool_error_not_a_result(tool_client, caplog):
+    """Anything that is not a GitLabError is a bug: isError with the type name, logged with
+    its traceback. Before the tool_result decorator this came back as a successful result."""
+    client, router = tool_client
+    router.get("/projects/123").mock(side_effect=RuntimeError("boom"))
+
+    with caplog.at_level(logging.ERROR, logger="mcp_gitlab.servers.gitlab"):
+        result = await client.call_tool(
+            "gitlab_get_project", {"project_id": "123"}, raise_on_error=False
+        )
+
+    assert result.is_error is True
+    assert "RuntimeError: boom" in result.content[0].text
+    logged = [r for r in caplog.records if r.name == "mcp_gitlab.servers.gitlab"]
+    assert logged and logged[0].exc_info is not None
+
+
+async def test_api_error_is_still_a_result(tool_client):
+    """Expected failures keep the JSON envelope; the MCP-level error flag stays off."""
+    client, router = tool_client
+    router.get("/projects/123").mock(return_value=Response(404, json={"message": "gone"}))
+
+    result = await client.call_tool(
+        "gitlab_get_project", {"project_id": "123"}, raise_on_error=False
+    )
+
+    assert result.is_error is False
+    assert "hint" in json.loads(result.content[0].text)
