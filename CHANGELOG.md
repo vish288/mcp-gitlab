@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.0] - 2026-09-27
+
+### Refactoring
+- refactor: shared annotation aliases and two small helpers in the tool module (f6a1723)
+- refactor: inline one-caller client methods into their tools (6524678)
+- refactor: drop unused mypy config and three one-caller helpers (8f6684a)
+
+### Documentation
+- docs: record the test-confidence and error-contract spec (1c18286)
+
+### Chores
+- chore: housekeeping remainder from the review pass (605c4a8)
+
+### Other
+
+
 ## [0.11.0] - 2026-09-26
 
 ### Features

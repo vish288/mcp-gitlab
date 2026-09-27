@@ -1,6 +1,6 @@
 {
   "name": "mcp-gitlab",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "MCP server for GitLab API — projects, MRs, pipelines, CI/CD, approvals, issues, code review.",
   "mcpServers": {
     "mcp-gitlab": {
