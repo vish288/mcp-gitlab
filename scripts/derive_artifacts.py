@@ -28,9 +28,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SERVER_JSON = ROOT / "server.json"
 LLMS_SPLIT_MARKER = "\n## Configuration"
 
-    "MCP server for GitLab API — projects, MRs, pipelines, CI/CD variables, approvals, and more"
-)
-
 
 def derive_gemini_extension() -> str:
     """gemini-extension.json from server.json — the single source, as in the
@@ -55,6 +52,7 @@ def derive_gemini_extension() -> str:
         ],
     }
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
 
 def derive_llms_txt() -> str:
     """Return llms.txt: the prefix of llms-full.txt before ## Configuration."""
