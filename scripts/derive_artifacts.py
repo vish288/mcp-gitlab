@@ -25,44 +25,36 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+SERVER_JSON = ROOT / "server.json"
 LLMS_SPLIT_MARKER = "\n## Configuration"
 
-_GEMINI_DESCRIPTION = (
     "MCP server for GitLab API — projects, MRs, pipelines, CI/CD variables, approvals, and more"
 )
 
 
 def derive_gemini_extension() -> str:
-    """Build gemini-extension.json (name + version from server.json)."""
-    server = json.loads((ROOT / "server.json").read_text())
-    name = server["name"].rsplit("/", 1)[-1]
-    extension = {
-        "name": name,
+    """gemini-extension.json from server.json — the single source, as in the
+    sibling servers. Settings are the registry's environment variables under
+    Gemini's field names; the description is the registry description."""
+    server = json.loads(SERVER_JSON.read_text(encoding="utf-8"))
+    pkg = server["packages"][0]
+    identifier = pkg["identifier"]
+    data = {
+        "name": identifier,
         "version": server["version"],
-        "description": _GEMINI_DESCRIPTION,
-        "mcpServers": {
-            name: {
-                "command": "uvx",
-                "args": [name],
-            }
-        },
+        "description": server["description"],
+        "mcpServers": {identifier: {"command": "uvx", "args": [identifier]}},
         "settings": [
             {
-                "name": "GITLAB_URL",
-                "description": "GitLab instance URL (e.g., https://gitlab.com)",
-                "required": True,
-                "sensitive": False,
-            },
-            {
-                "name": "GITLAB_TOKEN",
-                "description": "GitLab personal access token",
-                "required": True,
-                "sensitive": True,
-            },
+                "name": env["name"],
+                "description": env["description"],
+                "required": env["isRequired"],
+                "sensitive": env["isSecret"],
+            }
+            for env in pkg["environmentVariables"]
         ],
     }
-    return json.dumps(extension, indent=2) + "\n"
-
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 def derive_llms_txt() -> str:
     """Return llms.txt: the prefix of llms-full.txt before ## Configuration."""
