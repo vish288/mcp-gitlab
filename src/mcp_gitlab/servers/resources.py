@@ -128,30 +128,3 @@ def codeowners_guide() -> str:
 def approval_workflow_guide() -> str:
     """Approval workflow guide with merge readiness checklist."""
     return _load("approval-workflow.md")
-
-
-# ════════════════════════════════════════════════════════════════════
-# Startup validation
-# ════════════════════════════════════════════════════════════════════
-
-_RESOURCE_FILES = [
-    "gitlab-ci.md",
-    "git-workflow.md",
-    "mr-hygiene.md",
-    "conventional-commits.md",
-    "code-review.md",
-    "codeowners.md",
-    "approval-workflow.md",
-]
-
-
-def _validate_resources() -> None:
-    """Verify all expected resource files exist at import time."""
-    _dir = Path(_RESOURCES_DIR)
-    missing = [f for f in _RESOURCE_FILES if not (_dir / f).is_file()]
-    if missing:
-        msg = f"Missing resource files (packaging error): {missing}"
-        raise RuntimeError(msg)
-
-
-_validate_resources()
