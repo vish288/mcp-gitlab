@@ -104,6 +104,9 @@ jobs:
               f.write("\n")
           PY
 
+      - name: Derive gemini-extension.json and llms.txt
+        run: python scripts/derive_artifacts.py
+
       - name: Regenerate uv.lock
         run: uv lock
 
