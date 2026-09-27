@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from string import Template
 
-from fastmcp.prompts.prompt import Message
+from fastmcp.prompts import Message
 
 from ..client import parse_project_path
 from ._helpers import (
