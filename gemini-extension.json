@@ -1,7 +1,7 @@
 {
   "name": "mcp-gitlab",
   "version": "0.11.0",
-  "description": "MCP server for GitLab API \u2014 projects, MRs, pipelines, CI/CD variables, approvals, and more",
+  "description": "MCP server for GitLab API — projects, MRs, pipelines, CI/CD, approvals, issues, code review.",
   "mcpServers": {
     "mcp-gitlab": {
       "command": "uvx",
@@ -12,16 +12,22 @@
   },
   "settings": [
     {
+      "name": "GITLAB_TOKEN",
+      "description": "GitLab personal access token (also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN)",
+      "required": true,
+      "sensitive": true
+    },
+    {
       "name": "GITLAB_URL",
-      "description": "GitLab instance URL (e.g., https://gitlab.com)",
+      "description": "GitLab instance URL (e.g. https://gitlab.com)",
       "required": true,
       "sensitive": false
     },
     {
-      "name": "GITLAB_TOKEN",
-      "description": "GitLab personal access token",
-      "required": true,
-      "sensitive": true
+      "name": "GITLAB_READ_ONLY",
+      "description": "Restrict to read-only operations (true/false)",
+      "required": false,
+      "sensitive": false
     }
   ]
 }
