@@ -2418,6 +2418,6 @@ class TestDocstringContracts:
         tools = {t.name: t for t in await client.list_tools()}
         for name in ("gitlab_update_mr", "gitlab_update_issue", "gitlab_update_release"):
             desc = tools[name].description.lower()
-            params = tools[name].inputSchema["properties"]
+            params = tools[name].input_schema["properties"]
             assert "milestone" not in desc or any("milestone" in p for p in params)
             assert "assignee" not in desc or any("assignee" in p for p in params)
