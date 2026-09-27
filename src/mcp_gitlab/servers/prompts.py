@@ -7,20 +7,15 @@ from string import Template
 
 from fastmcp.prompts.prompt import Message
 
+from ..client import parse_project_path
 from ._helpers import (
     _load_file,
     _parse_gitlab_mr_url,
     _parse_gitlab_pipeline_url,
-    _parse_gitlab_project_url,
 )
 from .gitlab import mcp
 
 _PROMPTS_DIR = str(Path(__file__).resolve().parent.parent / "resources" / "prompts")
-
-
-def _load_prompt(filename: str) -> str:
-    """Load a prompt markdown file from the prompts directory."""
-    return _load_file(_PROMPTS_DIR, filename)
 
 
 def _render(filename: str, **kwargs: str) -> str:
@@ -29,7 +24,7 @@ def _render(filename: str, **kwargs: str) -> str:
     Uses string.Template ($var) instead of str.format({var}) to avoid
     KeyError when parameter values contain curly braces.
     """
-    return Template(_load_prompt(filename)).safe_substitute(kwargs)
+    return Template(_load_file(_PROMPTS_DIR, filename)).safe_substitute(kwargs)
 
 
 @mcp.prompt(tags={"gitlab", "review"})
@@ -87,7 +82,7 @@ def prepare_release(project_id: str, tag_name: str, ref: str = "main") -> list[M
 
     project_id accepts a full GitLab project URL.
     """
-    project_id = _parse_gitlab_project_url(project_id)
+    project_id = parse_project_path(project_id)
     text = _render("prepare-release.md", project_id=project_id, tag_name=tag_name, ref=ref)
     return [
         Message(role="user", content=text),
@@ -108,7 +103,7 @@ def setup_branch_protection(project_id: str) -> list[Message]:
 
     project_id accepts a full GitLab project URL.
     """
-    project_id = _parse_gitlab_project_url(project_id)
+    project_id = parse_project_path(project_id)
     text = _render("setup-branch-protection.md", project_id=project_id)
     return [
         Message(role="user", content=text),
@@ -153,7 +148,7 @@ def triage_issues(project_id: str, label: str = "") -> list[Message]:
 
     project_id accepts a full GitLab project URL.
     """
-    project_id = _parse_gitlab_project_url(project_id)
+    project_id = parse_project_path(project_id)
     text = _render("triage-issues.md", project_id=project_id, label=label)
     return [
         Message(role="user", content=text),

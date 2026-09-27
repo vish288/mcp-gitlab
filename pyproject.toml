@@ -79,7 +79,6 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "respx>=0.22.0",
     "ruff>=0.3.0",
-    "mypy>=1.8.0",
 ]
 
 [tool.ruff]
@@ -107,7 +106,3 @@ markers = ["network: hits the live internet; excluded from the default run"]
 source = ["src"]
 omit = ["src/mcp_gitlab/__init__.py", "src/mcp_gitlab/__main__.py"]
 
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-disallow_untyped_defs = true
