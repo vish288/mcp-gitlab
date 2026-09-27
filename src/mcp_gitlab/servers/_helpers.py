@@ -7,8 +7,6 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
-from ..client import parse_project_path
-
 
 @functools.cache
 def _load_file(base_dir: str, filename: str) -> str:
@@ -40,15 +38,23 @@ _PIPELINE_RE = re.compile(r"https?://[^/]+/(.+?)/-/pipelines/(\d+)")
 # client.parse_project_path for what that cost.
 
 
+def _parse_pair(rx: re.Pattern[str], value: str) -> tuple[str, str]:
+    """Extract (unquoted_group1, group2) from a regex match.
+
+    If *value* does not match *rx*, returns (value, "").
+    """
+    m = rx.match(value)
+    if m:
+        return unquote(m.group(1)), m.group(2)
+    return value, ""
+
+
 def _parse_gitlab_mr_url(value: str) -> tuple[str, str]:
     """Extract (project_path, mr_iid) from a GitLab MR URL.
 
     If *value* is not a URL, returns it unchanged as (value, "").
     """
-    m = _MR_RE.match(value)
-    if m:
-        return unquote(m.group(1)), m.group(2)
-    return value, ""
+    return _parse_pair(_MR_RE, value)
 
 
 def _parse_gitlab_pipeline_url(value: str) -> tuple[str, str]:
@@ -56,15 +62,4 @@ def _parse_gitlab_pipeline_url(value: str) -> tuple[str, str]:
 
     If *value* is not a URL, returns it unchanged as (value, "").
     """
-    m = _PIPELINE_RE.match(value)
-    if m:
-        return unquote(m.group(1)), m.group(2)
-    return value, ""
-
-
-def _parse_gitlab_project_url(value: str) -> str:
-    """Extract project_path from a GitLab project URL.
-
-    If *value* is not a URL, returns it unchanged.
-    """
-    return parse_project_path(value)
+    return _parse_pair(_PIPELINE_RE, value)
