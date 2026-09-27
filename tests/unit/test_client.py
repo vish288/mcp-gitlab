@@ -78,27 +78,27 @@ class TestRequest:
         mock_api.get("/projects/123").mock(
             return_value=httpx.Response(200, json={"id": 123, "name": "test"})
         )
-        result = await client.get_project(123)
+        result = await client.get("/projects/123")
         assert result["id"] == 123
         assert result["name"] == "test"
 
     async def test_auth_error_401(self, client, mock_api):
         mock_api.get("/projects/123").mock(return_value=httpx.Response(401, text="Unauthorized"))
         with pytest.raises(GitLabAuthError) as exc_info:
-            await client.get_project(123)
+            await client.get("/projects/123")
         assert exc_info.value.status_code == 401
 
     async def test_not_found_error(self, client, mock_api):
         mock_api.get("/projects/999").mock(return_value=httpx.Response(404, text="Not Found"))
         with pytest.raises(GitLabNotFoundError):
-            await client.get_project(999)
+            await client.get("/projects/999")
 
     async def test_server_error(self, client, mock_api):
         mock_api.get("/projects/123").mock(
             return_value=httpx.Response(500, text="Internal Server Error")
         )
         with pytest.raises(GitLabApiError) as exc_info:
-            await client.get_project(123)
+            await client.get("/projects/123")
         assert exc_info.value.status_code == 500
 
     async def test_html_response_error(self, client, mock_api):
@@ -110,7 +110,7 @@ class TestRequest:
             )
         )
         with pytest.raises(GitLabApiError, match="HTML"):
-            await client.get_project(123)
+            await client.get("/projects/123")
 
     async def test_html_response_error_on_raw_path(self, client, mock_api):
         """A raw read must not hand back a login page as content.
@@ -128,7 +128,7 @@ class TestRequest:
             )
         )
         with pytest.raises(GitLabApiError, match="HTML"):
-            await client.get_job_log(123, 7)
+            await client.get("/projects/123/jobs/7/trace", raw=True)
 
     async def test_raw_path_still_returns_plain_text(self, client, mock_api):
         """The guard must not swallow legitimate raw traces."""
@@ -139,18 +139,18 @@ class TestRequest:
                 headers={"content-type": "text/plain"},
             )
         )
-        assert "build ok" in await client.get_job_log(123, 7)
+        assert "build ok" in await client.get("/projects/123/jobs/7/trace", raw=True)
 
     async def test_empty_response(self, client, mock_api):
         mock_api.delete("/projects/123").mock(return_value=httpx.Response(204))
-        result = await client.delete_project(123)
+        result = await client.delete("/projects/123")
         assert result is None
 
     async def test_list_branches(self, client, mock_api):
         mock_api.get("/projects/123/repository/branches").mock(
             return_value=httpx.Response(200, json=[{"name": "main"}, {"name": "develop"}])
         )
-        branches, next_page = await client.list_branches(123)
+        branches, next_page = await client.get_paged("/projects/123/repository/branches")
         assert len(branches) == 2
         assert branches[0]["name"] == "main"
         assert next_page is None  # no X-Next-Page header -> last page
@@ -164,7 +164,7 @@ class TestRequest:
                 headers={"X-Next-Page": "2", "X-Total-Pages": "7"},
             )
         )
-        branches, next_page = await client.list_branches(123)
+        branches, next_page = await client.get_paged("/projects/123/repository/branches")
         assert len(branches) == 1
         assert next_page == 2
 
@@ -173,15 +173,15 @@ class TestRequest:
         mock_api.get("/projects/123/repository/branches").mock(
             return_value=httpx.Response(200, json=[{"name": "main"}], headers={"X-Next-Page": ""})
         )
-        _branches, next_page = await client.list_branches(123)
+        _branches, next_page = await client.get_paged("/projects/123/repository/branches")
         assert next_page is None
 
     async def test_create_merge_request(self, client, mock_api):
         mock_api.post("/projects/123/merge_requests").mock(
             return_value=httpx.Response(201, json={"iid": 1, "title": "Test MR"})
         )
-        result = await client.create_merge_request(
-            123,
+        result = await client.post(
+            "/projects/123/merge_requests",
             {
                 "source_branch": "feature",
                 "target_branch": "main",
@@ -194,7 +194,7 @@ class TestRequest:
         mock_api.get("/projects/123/jobs/456/trace").mock(
             return_value=httpx.Response(200, text="line1\nline2\nline3")
         )
-        result = await client.get_job_log(123, 456)
+        result = await client.get("/projects/123/jobs/456/trace", raw=True)
         assert "line1" in result
         assert "line3" in result
 
@@ -202,5 +202,5 @@ class TestRequest:
         route = mock_api.get("/projects/my-group%2Fmy-project").mock(
             return_value=httpx.Response(200, json={"id": 1})
         )
-        await client.get_project("my-group/my-project")
+        await client.get(f"/projects/{GitLabClient._encode_id('my-group/my-project')}")
         assert route.called

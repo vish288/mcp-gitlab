@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from typing import Annotated, Any, Literal
+from urllib.parse import quote
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
@@ -68,6 +69,10 @@ mcp = FastMCP(
 
 def _get_client(ctx: Context) -> GitLabClient:
     return ctx.request_context.lifespan_context["client"]
+
+
+# Encode a project/group id (numeric, path, or full URL) for a path segment.
+_enc = GitLabClient._encode_id
 
 
 def _get_config(ctx: Context) -> GitLabConfig:
@@ -241,7 +246,7 @@ async def gitlab_get_project(
 
     Returns id, name, path_with_namespace, visibility, default_branch, web_url, description.
     """
-    return _ok(await _get_client(ctx).get_project(project_id))
+    return _ok(await _get_client(ctx).get(f"/projects/{_enc(project_id)}"))
 
 
 @mcp.tool(
@@ -264,7 +269,8 @@ async def gitlab_create_project(
     Returns the new project's id, name, path_with_namespace, web_url, and default settings.
     """
     return _ok(
-        await _get_client(ctx).create_project(
+        await _get_client(ctx).post(
+            "/projects",
             _params(
                 name=name,
                 path=path,
@@ -273,7 +279,7 @@ async def gitlab_create_project(
                 visibility=visibility,
                 initialize_with_readme=initialize_with_readme,
                 default_branch=default_branch,
-            )
+            ),
         )
     )
 
@@ -293,7 +299,7 @@ async def gitlab_delete_project(
 
     Returns a {status: deleted, project_id} confirmation.
     """
-    await _get_client(ctx).delete_project(project_id)
+    await _get_client(ctx).delete(f"/projects/{_enc(project_id)}")
     return _ok({"status": "deleted", "project_id": project_id})
 
 
@@ -326,8 +332,8 @@ async def gitlab_update_project_merge_settings(
     Returns the updated project object.
     """
     return _ok(
-        await _get_client(ctx).update_project(
-            project_id,
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}",
             _params(
                 only_allow_merge_if_pipeline_succeeds=only_allow_merge_if_pipeline_succeeds,
                 only_allow_merge_if_all_discussions_are_resolved=only_allow_merge_if_all_discussions_are_resolved,
@@ -359,7 +365,7 @@ async def gitlab_get_project_approvals(
 
     Returns approvals_before_merge, reset_approvals_on_push, and self-approval rules.
     """
-    return _ok(await _get_client(ctx).get_project_approvals(project_id))
+    return _ok(await _get_client(ctx).get(f"/projects/{_enc(project_id)}/approvals"))
 
 
 @mcp.tool(
@@ -390,8 +396,8 @@ async def gitlab_update_project_approvals(
 ) -> str:
     """Update project-level approval settings. Returns the updated approval configuration."""
     return _ok(
-        await _get_client(ctx).update_project_approvals(
-            project_id,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/approvals",
             _params(
                 approvals_before_merge=approvals_before_merge,
                 reset_approvals_on_push=reset_approvals_on_push,
@@ -418,7 +424,7 @@ async def gitlab_list_project_approval_rules(
 
     Returns rules with id, name, approvals_required, and eligible approvers/groups.
     """
-    data = await _get_client(ctx).list_project_approval_rules(project_id)
+    data = await _get_client(ctx).get(f"/projects/{_enc(project_id)}/approval_rules")
     return _paginated(data)
 
 
@@ -442,8 +448,8 @@ async def gitlab_create_project_approval_rule(
     Returns the new rule's id, name, approvals_required, and target users/groups.
     """
     return _ok(
-        await _get_client(ctx).create_project_approval_rule(
-            project_id,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/approval_rules",
             _params(
                 name=name,
                 approvals_required=approvals_required,
@@ -474,9 +480,8 @@ async def gitlab_update_project_approval_rule(
 ) -> str:
     """Update a project-level approval rule. Returns the updated rule object."""
     return _ok(
-        await _get_client(ctx).update_project_approval_rule(
-            project_id,
-            rule_id,
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/approval_rules/{rule_id}",
             _params(
                 name=name,
                 approvals_required=approvals_required,
@@ -500,7 +505,7 @@ async def gitlab_delete_project_approval_rule(
     rule_id: Annotated[int, Field(description="Approval rule ID")],
 ) -> str:
     """Delete a project-level approval rule. Returns a {status: deleted, rule_id} confirmation."""
-    await _get_client(ctx).delete_project_approval_rule(project_id, rule_id)
+    await _get_client(ctx).delete(f"/projects/{_enc(project_id)}/approval_rules/{rule_id}")
     return _ok({"status": "deleted", "rule_id": rule_id})
 
 
@@ -525,7 +530,9 @@ async def gitlab_list_mr_approval_rules(
 
     Returns rules with id, name, approvals_required, and approvers.
     """
-    data = await _get_client(ctx).list_mr_approval_rules(project_id, mr_iid)
+    data = await _get_client(ctx).get(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/approval_rules"
+    )
     return _paginated(data)
 
 
@@ -550,9 +557,8 @@ async def gitlab_create_mr_approval_rule(
     Returns the new rule's id, name, approvals_required, and approvers.
     """
     return _ok(
-        await _get_client(ctx).create_mr_approval_rule(
-            project_id,
-            mr_iid,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/approval_rules",
             _params(
                 name=name,
                 approvals_required=approvals_required,
@@ -582,10 +588,8 @@ async def gitlab_update_mr_approval_rule(
 ) -> str:
     """Update a merge-request-level approval rule. Returns the updated rule object."""
     return _ok(
-        await _get_client(ctx).update_mr_approval_rule(
-            project_id,
-            mr_iid,
-            rule_id,
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/approval_rules/{rule_id}",
             _params(
                 name=name,
                 approvals_required=approvals_required,
@@ -613,7 +617,9 @@ async def gitlab_delete_mr_approval_rule(
 
     Returns a {status: deleted, rule_id} confirmation.
     """
-    await _get_client(ctx).delete_mr_approval_rule(project_id, mr_iid, rule_id)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/approval_rules/{rule_id}"
+    )
     return _ok({"status": "deleted", "rule_id": rule_id})
 
 
@@ -639,8 +645,8 @@ async def gitlab_list_groups(
 
     Returns id, name, full_path, parent_id, visibility, web_url per group.
     """
-    data, next_page = await _get_client(ctx).list_groups(
-        _params(search=search, per_page=per_page, page=page)
+    data, next_page = await _get_client(ctx).get_paged(
+        "/groups", {"per_page": 50, **_params(search=search, per_page=per_page, page=page)}
     )
     return _paginated(data, next_page)
 
@@ -658,7 +664,7 @@ async def gitlab_get_group(
 
     Returns id, name, full_path, visibility, web_url, and subgroup/membership counts.
     """
-    return _ok(await _get_client(ctx).get_group(group_id))
+    return _ok(await _get_client(ctx).get(f"/groups/{_enc(group_id)}"))
 
 
 @mcp.tool(
@@ -678,8 +684,9 @@ async def gitlab_share_project_with_group(
 
     Returns a {status: shared, project_id, group_id} confirmation.
     """
-    await _get_client(ctx).share_project_with_group(
-        project_id, group_id, ACCESS_LEVELS[access_level]
+    await _get_client(ctx).post(
+        f"/projects/{_enc(project_id)}/share",
+        {"group_id": group_id, "group_access": ACCESS_LEVELS[access_level]},
     )
     return _ok({"status": "shared", "project_id": project_id, "group_id": group_id})
 
@@ -700,7 +707,7 @@ async def gitlab_unshare_project_with_group(
 
     Returns a {status: unshared, project_id, group_id} confirmation.
     """
-    await _get_client(ctx).unshare_project_with_group(project_id, group_id)
+    await _get_client(ctx).delete(f"/projects/{_enc(project_id)}/share/{group_id}")
     return _ok({"status": "unshared", "project_id": project_id, "group_id": group_id})
 
 
@@ -719,8 +726,9 @@ async def gitlab_share_group_with_group(
 
     Returns the share record.
     """
-    await _get_client(ctx).share_group_with_group(
-        target_group_id, source_group_id, ACCESS_LEVELS[access_level]
+    await _get_client(ctx).post(
+        f"/groups/{_enc(target_group_id)}/share",
+        {"group_id": source_group_id, "group_access": ACCESS_LEVELS[access_level]},
     )
     return _ok({"status": "shared"})
 
@@ -736,7 +744,7 @@ async def gitlab_unshare_group_with_group(
     source_group_id: Annotated[int, Field(description="Source group ID to remove")],
 ) -> str:
     """Revoke a group-to-group share. Returns a {status: unshared} confirmation."""
-    await _get_client(ctx).unshare_group_with_group(target_group_id, source_group_id)
+    await _get_client(ctx).delete(f"/groups/{_enc(target_group_id)}/share/{source_group_id}")
     return _ok({"status": "unshared"})
 
 
@@ -765,8 +773,9 @@ async def gitlab_list_branches(
 
     Returns name, commit sha, protected, default, and merged flags per branch.
     """
-    data, next_page = await _get_client(ctx).list_branches(
-        project_id, _params(search=search, per_page=per_page, page=page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/repository/branches",
+        {"per_page": 100, **_params(search=search, per_page=per_page, page=page)},
     )
     return _paginated(data, next_page)
 
@@ -788,7 +797,12 @@ async def gitlab_create_branch(
 
     Returns the new branch's name, commit sha, and protection status.
     """
-    return _ok(await _get_client(ctx).create_branch(project_id, branch_name, ref))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/repository/branches",
+            {"branch": branch_name, "ref": ref},
+        )
+    )
 
 
 @mcp.tool(
@@ -804,7 +818,9 @@ async def gitlab_delete_branch(
     branch_name: Annotated[str, Field(description="Branch name to delete", min_length=1)],
 ) -> str:
     """Delete a branch from a project. Returns a {status: deleted, branch} confirmation."""
-    await _get_client(ctx).delete_branch(project_id, branch_name)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/repository/branches/{quote(branch_name, safe='')}"
+    )
     return _ok({"status": "deleted", "branch": branch_name})
 
 
@@ -836,11 +852,14 @@ async def gitlab_list_commits(
 
     Returns id, short_id, title, author_name, authored_date, web_url per commit.
     """
-    data, next_page = await _get_client(ctx).list_commits(
-        project_id,
-        _params(
-            ref_name=ref_name, since=since, until=until, path=path, per_page=per_page, page=page
-        ),
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/repository/commits",
+        {
+            "per_page": 40,
+            **_params(
+                ref_name=ref_name, since=since, until=until, path=path, per_page=per_page, page=page
+            ),
+        },
     )
     return _paginated(data, next_page)
 
@@ -864,10 +883,10 @@ async def gitlab_get_commit(
     (and diffs when include_diff=true).
     """
     client = _get_client(ctx)
-    commit = await client.get_commit(project_id, sha)
+    base = f"/projects/{_enc(project_id)}/repository/commits/{quote(sha, safe='')}"
+    commit = await client.get(base)
     if include_diff:
-        diff = await client.get_commit_diff(project_id, sha)
-        commit["diffs"] = diff
+        commit["diffs"] = await client.get(f"{base}/diff")
     return _ok(commit)
 
 
@@ -899,8 +918,8 @@ async def gitlab_create_commit(
     Returns the new commit's id, short_id, title, and parent_ids.
     """
     return _ok(
-        await _get_client(ctx).create_commit(
-            project_id,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/repository/commits",
             _params(
                 branch=branch,
                 commit_message=commit_message,
@@ -930,7 +949,12 @@ async def gitlab_compare(
 
     Returns commits, diffs, compare_timeout, and compare_same_ref flags.
     """
-    return _ok(await _get_client(ctx).compare(project_id, from_ref, to_ref))
+    return _ok(
+        await _get_client(ctx).get(
+            f"/projects/{_enc(project_id)}/repository/compare",
+            {"from": from_ref, "to": to_ref},
+        )
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -963,18 +987,21 @@ async def gitlab_list_mrs(
 
     Returns iid, title, state, source_branch, target_branch, author, web_url per MR.
     """
-    data, next_page = await _get_client(ctx).list_merge_requests(
-        project_id,
-        _params(
-            state=state,
-            scope=scope,
-            source_branch=source_branch,
-            target_branch=target_branch,
-            search=search,
-            labels=labels,
-            per_page=per_page,
-            page=page,
-        ),
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/merge_requests",
+        {
+            "per_page": 20,
+            **_params(
+                state=state,
+                scope=scope,
+                source_branch=source_branch,
+                target_branch=target_branch,
+                search=search,
+                labels=labels,
+                per_page=per_page,
+                page=page,
+            ),
+        },
     )
     return _paginated(data, next_page)
 
@@ -1024,8 +1051,8 @@ async def gitlab_create_mr(
     Returns the new MR's iid, title, state, source_branch, target_branch, and web_url.
     """
     return _ok(
-        await _get_client(ctx).create_merge_request(
-            project_id,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests",
             _params(
                 source_branch=source_branch,
                 target_branch=target_branch,
@@ -1067,9 +1094,8 @@ async def gitlab_update_mr(
     Returns the updated MR object.
     """
     return _ok(
-        await _get_client(ctx).update_merge_request(
-            project_id,
-            mr_iid,
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}",
             _params(
                 title=title,
                 description=description,
@@ -1200,7 +1226,12 @@ async def gitlab_rebase_mr(
 
     Returns {rebase_in_progress: true}.
     """
-    return _ok(await _get_client(ctx).rebase_merge_request(project_id, mr_iid, skip_ci))
+    return _ok(
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/rebase",
+            {"skip_ci": skip_ci},
+        )
+    )
 
 
 @mcp.tool(
@@ -1216,7 +1247,9 @@ async def gitlab_mr_changes(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
 ) -> str:
     """Get file changes of a merge request. Returns list of diffs with old/new paths and content."""
-    return _ok(await _get_client(ctx).get_merge_request_changes(project_id, mr_iid))
+    return _ok(
+        await _get_client(ctx).get(f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/changes")
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1247,7 +1280,10 @@ async def gitlab_list_mr_notes(
     system notes therefore returns count 0 with has_more true -- keep following
     next_page rather than concluding the MR has no comments.
     """
-    data, next_page = await _get_client(ctx).list_mr_notes(project_id, mr_iid, page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes",
+        {"per_page": 100, "page": page},
+    )
     if not include_system:
         data = [n for n in data if not n.get("system", False)]
     return _paginated(data, next_page)
@@ -1273,7 +1309,14 @@ async def gitlab_add_mr_note(
 
     Returns the new note's id, body, author, and created_at.
     """
-    return _ok(await _get_client(ctx).add_mr_note(project_id, mr_iid, body, internal))
+    data: dict[str, Any] = {"body": body}
+    if internal:
+        data["internal"] = True
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes", data
+        )
+    )
 
 
 @mcp.tool(
@@ -1290,7 +1333,9 @@ async def gitlab_delete_mr_note(
     note_id: Annotated[int, Field(description="Note ID to delete")],
 ) -> str:
     """Delete a comment from a merge request. Returns a {status: deleted, note_id} confirmation."""
-    await _get_client(ctx).delete_mr_note(project_id, mr_iid, note_id)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes/{note_id}"
+    )
     return _ok({"status": "deleted", "note_id": note_id})
 
 
@@ -1312,7 +1357,12 @@ async def gitlab_update_mr_note(
 
     Returns the updated note's id, body, author, and updated_at.
     """
-    return _ok(await _get_client(ctx).update_mr_note(project_id, mr_iid, note_id, body))
+    return _ok(
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes/{note_id}",
+            {"body": body},
+        )
+    )
 
 
 @mcp.tool(
@@ -1330,7 +1380,12 @@ async def gitlab_award_emoji(
     emoji: Annotated[str, Field(description="Emoji name (e.g. thumbsup, 100, eyes)", min_length=1)],
 ) -> str:
     """Add an emoji reaction to an MR note. Returns the new award's id, name, and user."""
-    return _ok(await _get_client(ctx).award_emoji(project_id, mr_iid, note_id, emoji))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes/{note_id}/award_emoji",
+            {"name": emoji},
+        )
+    )
 
 
 @mcp.tool(
@@ -1348,7 +1403,9 @@ async def gitlab_remove_emoji(
     award_id: Annotated[int, Field(description="Award emoji ID to remove")],
 ) -> str:
     """Remove an emoji reaction from an MR note. Returns a {status: removed} confirmation."""
-    await _get_client(ctx).delete_award_emoji(project_id, mr_iid, note_id, award_id)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes/{note_id}/award_emoji/{award_id}"
+    )
     return _ok({"status": "removed", "award_id": award_id})
 
 
@@ -1377,7 +1434,10 @@ async def gitlab_list_mr_discussions(
     `count` is post-filter while `has_more` describes the unfiltered server
     page, so a page of only system threads returns count 0 with has_more true.
     """
-    data, next_page = await _get_client(ctx).list_mr_discussions(project_id, mr_iid, page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions",
+        {"per_page": 100, "page": page},
+    )
     # Filter out system-only discussions
     filtered = []
     for d in data:
@@ -1446,7 +1506,11 @@ async def gitlab_create_mr_discussion(
 
         params["position"] = position
 
-    return _ok(await _get_client(ctx).create_mr_discussion(project_id, mr_iid, params))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions", params
+        )
+    )
 
 
 @mcp.tool(
@@ -1467,7 +1531,12 @@ async def gitlab_reply_to_discussion(
 
     Returns the new note's id, body, author, and created_at.
     """
-    return _ok(await _get_client(ctx).reply_to_discussion(project_id, mr_iid, discussion_id, body))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions/{discussion_id}/notes",
+            {"body": body},
+        )
+    )
 
 
 @mcp.tool(
@@ -1488,7 +1557,10 @@ async def gitlab_resolve_discussion(
 
     Returns the updated discussion with its resolved flag and notes.
     """
-    data = await _get_client(ctx).resolve_discussion(project_id, mr_iid, discussion_id, resolved)
+    data = await _get_client(ctx).put(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions/{discussion_id}",
+        {"resolved": resolved},
+    )
     return _ok(data)
 
 
@@ -1517,7 +1589,14 @@ async def gitlab_approve_mr(
 
     Returns the updated approval state (approved_by, approvals_left).
     """
-    return _ok(await _get_client(ctx).approve_merge_request(project_id, mr_iid, sha))
+    data: dict[str, Any] = {}
+    if sha:
+        data["sha"] = sha
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/approve", data or None
+        )
+    )
 
 
 @mcp.tool(
@@ -1536,7 +1615,11 @@ async def gitlab_unapprove_mr(
 
     Returns the updated approval state.
     """
-    return _ok(await _get_client(ctx).unapprove_merge_request(project_id, mr_iid))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/unapprove"
+        )
+    )
 
 
 @mcp.tool(
@@ -1555,7 +1638,11 @@ async def gitlab_get_mr_approvals(
 
     Returns approved_by, approvals_required, approvals_left, and matching rules.
     """
-    return _ok(await _get_client(ctx).get_mr_approvals(project_id, mr_iid))
+    return _ok(
+        await _get_client(ctx).get(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/approvals"
+        )
+    )
 
 
 @mcp.tool(
@@ -1576,7 +1663,9 @@ async def gitlab_list_mr_pipelines(
 
     Returns id, status, ref, sha, source, web_url per pipeline.
     """
-    data, next_page = await _get_client(ctx).list_mr_pipelines(project_id, mr_iid, page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/pipelines", {"page": page}
+    )
     return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
 
 
@@ -1597,7 +1686,9 @@ async def gitlab_list_mr_commits(
 
     Returns id, short_id, title, author_name, authored_date per commit.
     """
-    data, next_page = await _get_client(ctx).list_mr_commits(project_id, mr_iid, page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/commits", {"page": page}
+    )
     return _paginated(data, next_page)
 
 
@@ -1617,7 +1708,11 @@ async def gitlab_subscribe_mr(
 
     Returns the updated MR object.
     """
-    return _ok(await _get_client(ctx).subscribe_mr(project_id, mr_iid))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/subscribe"
+        )
+    )
 
 
 @mcp.tool(
@@ -1636,7 +1731,11 @@ async def gitlab_unsubscribe_mr(
 
     Returns the updated MR object.
     """
-    return _ok(await _get_client(ctx).unsubscribe_mr(project_id, mr_iid))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/unsubscribe"
+        )
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1669,8 +1768,12 @@ async def gitlab_list_pipelines(
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
     """List pipelines for a project. Returns id, status, ref, source, timing, web_url."""
-    data, next_page = await _get_client(ctx).list_pipelines(
-        project_id, _params(ref=ref, status=status, source=source, per_page=per_page, page=page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/pipelines",
+        {
+            "per_page": 20,
+            **_params(ref=ref, status=status, source=source, per_page=per_page, page=page),
+        },
     )
     return _paginated([_slim_pipeline(p) for p in data] if slim else data, next_page)
 
@@ -1695,11 +1798,12 @@ async def gitlab_get_pipeline(
     Jobs include id, name, stage, status, timing, failure_reason, web_url.
     """
     client = _get_client(ctx)
-    pipeline = await client.get_pipeline(project_id, pipeline_id)
+    base = f"/projects/{_enc(project_id)}/pipelines/{pipeline_id}"
+    pipeline = await client.get(base)
     if slim:
         pipeline = _slim_pipeline(pipeline)
     if include_jobs:
-        jobs, _ = await client.list_pipeline_jobs(project_id, pipeline_id)
+        jobs, _ = await client.get_paged(f"{base}/jobs", {"per_page": 100, "page": 1})
         pipeline["jobs"] = [_slim_job(j) for j in jobs] if slim else jobs
     return _ok(pipeline)
 
@@ -1724,7 +1828,12 @@ async def gitlab_create_pipeline(
 
     Returns the new pipeline's id, status, ref, sha, source, web_url.
     """
-    return _ok(_slim_pipeline(await _get_client(ctx).create_pipeline(project_id, ref, variables)))
+    data: dict[str, Any] = {"ref": ref}
+    if variables:
+        data["variables"] = variables
+    return _ok(
+        _slim_pipeline(await _get_client(ctx).post(f"/projects/{_enc(project_id)}/pipeline", data))
+    )
 
 
 @mcp.tool(
@@ -1743,7 +1852,13 @@ async def gitlab_retry_pipeline(
 
     Returns the updated pipeline with status and timing.
     """
-    return _ok(_slim_pipeline(await _get_client(ctx).retry_pipeline(project_id, pipeline_id)))
+    return _ok(
+        _slim_pipeline(
+            await _get_client(ctx).post(
+                f"/projects/{_enc(project_id)}/pipelines/{pipeline_id}/retry"
+            )
+        )
+    )
 
 
 @mcp.tool(
@@ -1759,7 +1874,13 @@ async def gitlab_cancel_pipeline(
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
 ) -> str:
     """Cancel a running pipeline. Returns the updated pipeline with status=canceled."""
-    return _ok(_slim_pipeline(await _get_client(ctx).cancel_pipeline(project_id, pipeline_id)))
+    return _ok(
+        _slim_pipeline(
+            await _get_client(ctx).post(
+                f"/projects/{_enc(project_id)}/pipelines/{pipeline_id}/cancel"
+            )
+        )
+    )
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1780,7 +1901,9 @@ async def gitlab_retry_job(
     job_id: Annotated[int, Field(description="Job ID")],
 ) -> str:
     """Retry a failed job. Returns the new job's id, status, name, stage, and web_url."""
-    return _ok(_slim_job(await _get_client(ctx).retry_job(project_id, job_id)))
+    return _ok(
+        _slim_job(await _get_client(ctx).post(f"/projects/{_enc(project_id)}/jobs/{job_id}/retry"))
+    )
 
 
 @mcp.tool(
@@ -1803,7 +1926,16 @@ async def gitlab_play_job(
 
     Returns the started job's id, status, name, and web_url.
     """
-    return _ok(_slim_job(await _get_client(ctx).play_job(project_id, job_id, variables)))
+    data: dict[str, Any] = {}
+    if variables:
+        data["job_variables_attributes"] = variables
+    return _ok(
+        _slim_job(
+            await _get_client(ctx).post(
+                f"/projects/{_enc(project_id)}/jobs/{job_id}/play", data or None
+            )
+        )
+    )
 
 
 @mcp.tool(
@@ -1819,7 +1951,9 @@ async def gitlab_cancel_job(
     job_id: Annotated[int, Field(description="Job ID")],
 ) -> str:
     """Cancel a running job. Returns the updated job with status=canceled."""
-    return _ok(_slim_job(await _get_client(ctx).cancel_job(project_id, job_id)))
+    return _ok(
+        _slim_job(await _get_client(ctx).post(f"/projects/{_enc(project_id)}/jobs/{job_id}/cancel"))
+    )
 
 
 @mcp.tool(
@@ -1842,7 +1976,9 @@ async def gitlab_get_job_log(
 
     Returns {log, total_lines, shown_lines}. Pass tail_lines=0 for the whole log.
     """
-    log_text = await _get_client(ctx).get_job_log(project_id, job_id)
+    log_text = await _get_client(ctx).get(
+        f"/projects/{_enc(project_id)}/jobs/{job_id}/trace", raw=True
+    )
     lines = log_text.splitlines()
     if tail_lines and len(lines) > tail_lines:
         lines = lines[-tail_lines:]
@@ -1882,9 +2018,12 @@ async def gitlab_list_tags(
 
     Returns name, message, target sha, commit summary, and any attached release per tag.
     """
-    data, next_page = await _get_client(ctx).list_tags(
-        project_id,
-        _params(search=search, order_by=order_by, sort=sort, per_page=per_page, page=page),
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/repository/tags",
+        {
+            "per_page": 20,
+            **_params(search=search, order_by=order_by, sort=sort, per_page=per_page, page=page),
+        },
     )
     return _paginated(data, next_page)
 
@@ -1902,7 +2041,11 @@ async def gitlab_get_tag(
     tag_name: Annotated[str, Field(description="Tag name", min_length=1)],
 ) -> str:
     """Get a tag's details. Returns name, message, target commit, and any attached release."""
-    return _ok(await _get_client(ctx).get_tag(project_id, tag_name))
+    return _ok(
+        await _get_client(ctx).get(
+            f"/projects/{_enc(project_id)}/repository/tags/{quote(tag_name, safe='')}"
+        )
+    )
 
 
 @mcp.tool(
@@ -1924,8 +2067,9 @@ async def gitlab_create_tag(
     Returns the new tag's name, message, target, and commit.
     """
     return _ok(
-        await _get_client(ctx).create_tag(
-            project_id, _params(tag_name=tag_name, ref=ref, message=message)
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/repository/tags",
+            _params(tag_name=tag_name, ref=ref, message=message),
         )
     )
 
@@ -1943,7 +2087,9 @@ async def gitlab_delete_tag(
     tag_name: Annotated[str, Field(description="Tag name to delete", min_length=1)],
 ) -> str:
     """Delete a tag. Returns a {status: deleted, tag} confirmation."""
-    await _get_client(ctx).delete_tag(project_id, tag_name)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/repository/tags/{quote(tag_name, safe='')}"
+    )
     return _ok({"status": "deleted", "tag": tag_name})
 
 
@@ -1971,8 +2117,9 @@ async def gitlab_list_releases(
 
     Returns tag_name, name, description, created_at, released_at, and assets per release.
     """
-    data, next_page = await _get_client(ctx).list_releases(
-        project_id, _params(per_page=per_page, page=page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/releases",
+        {"per_page": 20, **_params(per_page=per_page, page=page)},
     )
     return _paginated(data, next_page)
 
@@ -1993,7 +2140,11 @@ async def gitlab_get_release(
 
     Returns name, description, tag_name, created_at, and assets (links, sources).
     """
-    return _ok(await _get_client(ctx).get_release(project_id, tag_name))
+    return _ok(
+        await _get_client(ctx).get(
+            f"/projects/{_enc(project_id)}/releases/{quote(tag_name, safe='')}"
+        )
+    )
 
 
 @mcp.tool(
@@ -2028,7 +2179,7 @@ async def gitlab_create_release(
         released_at=released_at,
         assets={"links": links} if links is not None else None,
     )
-    return _ok(await _get_client(ctx).create_release(project_id, params))
+    return _ok(await _get_client(ctx).post(f"/projects/{_enc(project_id)}/releases", params))
 
 
 @mcp.tool(
@@ -2048,9 +2199,8 @@ async def gitlab_update_release(
 ) -> str:
     """Update a release's name, description, or release date. Returns the updated release."""
     return _ok(
-        await _get_client(ctx).update_release(
-            project_id,
-            tag_name,
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/releases/{quote(tag_name, safe='')}",
             _params(name=name, description=description, released_at=released_at),
         )
     )
@@ -2072,7 +2222,9 @@ async def gitlab_delete_release(
 
     Returns a {status: deleted, tag_name} confirmation.
     """
-    await _get_client(ctx).delete_release(project_id, tag_name)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/releases/{quote(tag_name, safe='')}"
+    )
     return _ok({"status": "deleted", "tag_name": tag_name})
 
 
@@ -2098,7 +2250,9 @@ async def gitlab_list_variables(
     Returns key, value (shown as '***MASKED***' when masked), protected, masked,
     environment_scope per variable.
     """
-    data, next_page = await _get_client(ctx).list_variables(project_id, page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/variables", {"per_page": 100, "page": page}
+    )
     for var in data:
         if var.get("masked"):
             var["value"] = "***MASKED***"
@@ -2134,8 +2288,8 @@ async def gitlab_create_variable(
     environment_scope.
     """
     return _ok(
-        await _get_client(ctx).create_variable(
-            project_id,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/variables",
             _params(
                 key=key,
                 value=value,
@@ -2176,9 +2330,9 @@ async def gitlab_update_variable(
 
     environment_scope selects which scoped variable to update; it does not change the scope.
     """
-    data = await _get_client(ctx).update_variable(
-        project_id,
-        key,
+    query = {"filter[environment_scope]": environment_scope} if environment_scope else None
+    data = await _get_client(ctx).put(
+        f"/projects/{_enc(project_id)}/variables/{key}",
         _params(
             value=value,
             variable_type=variable_type,
@@ -2187,7 +2341,7 @@ async def gitlab_update_variable(
             raw=raw,
             description=description,
         ),
-        environment_scope=environment_scope,
+        params=query,
     )
     return _ok(data)
 
@@ -2206,7 +2360,8 @@ async def gitlab_delete_variable(
     environment_scope: Annotated[str | None, Field(description="Environment scope filter")] = None,
 ) -> str:
     """Delete a project CI/CD variable. Returns a {status: deleted, key} confirmation."""
-    await _get_client(ctx).delete_variable(project_id, key, environment_scope)
+    query = {"filter[environment_scope]": environment_scope} if environment_scope else None
+    await _get_client(ctx).delete(f"/projects/{_enc(project_id)}/variables/{key}", params=query)
     return _ok({"status": "deleted", "key": key})
 
 
@@ -2230,7 +2385,9 @@ async def gitlab_list_group_variables(
     Returns key, value (shown as '***MASKED***' when masked), protected, masked,
     environment_scope per variable.
     """
-    data, next_page = await _get_client(ctx).list_group_variables(group_id, page)
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/groups/{_enc(group_id)}/variables", {"per_page": 100, "page": page}
+    )
     for var in data:
         if var.get("masked"):
             var["value"] = "***MASKED***"
@@ -2260,8 +2417,8 @@ async def gitlab_create_group_variable(
     environment_scope.
     """
     return _ok(
-        await _get_client(ctx).create_group_variable(
-            group_id,
+        await _get_client(ctx).post(
+            f"/groups/{_enc(group_id)}/variables",
             _params(
                 key=key,
                 value=value,
@@ -2294,9 +2451,8 @@ async def gitlab_update_group_variable(
 ) -> str:
     """Update a group CI/CD variable. Returns the updated variable object."""
     return _ok(
-        await _get_client(ctx).update_group_variable(
-            group_id,
-            key,
+        await _get_client(ctx).put(
+            f"/groups/{_enc(group_id)}/variables/{key}",
             _params(
                 value=value,
                 variable_type=variable_type,
@@ -2320,7 +2476,7 @@ async def gitlab_delete_group_variable(
     key: Annotated[str, Field(description="Variable key", min_length=1)],
 ) -> str:
     """Delete a group CI/CD variable. Returns a {status: deleted, key} confirmation."""
-    await _get_client(ctx).delete_group_variable(group_id, key)
+    await _get_client(ctx).delete(f"/groups/{_enc(group_id)}/variables/{key}")
     return _ok({"status": "deleted", "key": key})
 
 
@@ -2352,16 +2508,19 @@ async def gitlab_list_issues(
 
     Returns iid, title, state, labels, author, web_url per issue.
     """
-    data, next_page = await _get_client(ctx).list_issues(
-        project_id,
-        _params(
-            state=state,
-            labels=labels,
-            search=search,
-            assignee_id=assignee_id,
-            per_page=per_page,
-            page=page,
-        ),
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/issues",
+        {
+            "per_page": 20,
+            **_params(
+                state=state,
+                labels=labels,
+                search=search,
+                assignee_id=assignee_id,
+                per_page=per_page,
+                page=page,
+            ),
+        },
     )
     return _paginated(data, next_page)
 
@@ -2382,7 +2541,7 @@ async def gitlab_get_issue(
 
     Returns iid, title, description, state, labels, assignees, author, milestone, due_date, web_url.
     """
-    return _ok(await _get_client(ctx).get_issue(project_id, issue_iid))
+    return _ok(await _get_client(ctx).get(f"/projects/{_enc(project_id)}/issues/{issue_iid}"))
 
 
 @mcp.tool(
@@ -2408,8 +2567,8 @@ async def gitlab_create_issue(
     Returns the new issue's iid, title, state, labels, assignees, author, web_url.
     """
     return _ok(
-        await _get_client(ctx).create_issue(
-            project_id,
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/issues",
             _params(
                 title=title,
                 description=description,
@@ -2446,9 +2605,8 @@ async def gitlab_update_issue(
     Returns the updated issue object.
     """
     return _ok(
-        await _get_client(ctx).update_issue(
-            project_id,
-            issue_iid,
+        await _get_client(ctx).put(
+            f"/projects/{_enc(project_id)}/issues/{issue_iid}",
             _params(
                 title=title,
                 description=description,
@@ -2475,4 +2633,8 @@ async def gitlab_add_issue_comment(
     body: Annotated[str, Field(description="Comment body (markdown)", min_length=1)],
 ) -> str:
     """Post a comment on an issue. Returns the new note's id, body, author, and created_at."""
-    return _ok(await _get_client(ctx).add_issue_comment(project_id, issue_iid, body))
+    return _ok(
+        await _get_client(ctx).post(
+            f"/projects/{_enc(project_id)}/issues/{issue_iid}/notes", {"body": body}
+        )
+    )
