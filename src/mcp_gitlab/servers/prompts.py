@@ -161,29 +161,3 @@ def triage_issues(project_id: str, label: str = "") -> list[Message]:
             ),
         ),
     ]
-
-
-# ════════════════════════════════════════════════════════════════════
-# Startup validation
-# ════════════════════════════════════════════════════════════════════
-
-_PROMPT_FILES = [
-    "review-mr.md",
-    "approve-mr.md",
-    "diagnose-pipeline.md",
-    "prepare-release.md",
-    "setup-branch-protection.md",
-    "triage-issues.md",
-]
-
-
-def _validate_prompts() -> None:
-    """Verify all expected prompt files exist at import time."""
-    _dir = Path(_PROMPTS_DIR)
-    missing = [f for f in _PROMPT_FILES if not (_dir / f).is_file()]
-    if missing:
-        msg = f"Missing prompt files (packaging error): {missing}"
-        raise RuntimeError(msg)
-
-
-_validate_prompts()

@@ -87,19 +87,11 @@ class GitLabClient:
         json_data: Any = None,
         params: dict[str, Any] | None = None,
         raw: bool = False,
-        content: bytes | None = None,
-        extra_headers: dict[str, str] | None = None,
     ) -> Any:
         """Make an API request and return parsed JSON (or raw text if raw=True)."""
-        headers = {}
-        if extra_headers:
-            headers.update(extra_headers)
-
-        kwargs: dict[str, Any] = {"params": params, "headers": headers}
+        kwargs: dict[str, Any] = {"params": params}
         if json_data is not None:
             kwargs["json"] = json_data
-        if content is not None:
-            kwargs["content"] = content
 
         resp = await self._client.request(method, path, **kwargs)
 
@@ -164,14 +156,16 @@ class GitLabClient:
         next_page = resp.headers.get("x-next-page") or None
         return (items or []), int(next_page) if next_page else None
 
-    async def post(self, path: str, json_data: Any = None, **kwargs: Any) -> Any:
-        return await self._request("POST", path, json_data=json_data, **kwargs)
+    async def post(self, path: str, json_data: Any = None) -> Any:
+        return await self._request("POST", path, json_data=json_data)
 
-    async def put(self, path: str, json_data: Any = None, **kwargs: Any) -> Any:
-        return await self._request("PUT", path, json_data=json_data, **kwargs)
+    async def put(
+        self, path: str, json_data: Any = None, params: dict[str, Any] | None = None
+    ) -> Any:
+        return await self._request("PUT", path, json_data=json_data, params=params)
 
-    async def delete(self, path: str, **kwargs: Any) -> Any:
-        return await self._request("DELETE", path, **kwargs)
+    async def delete(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return await self._request("DELETE", path, params=params)
 
     # ── Merge requests ────────────────────────────────────────────
     # Kept because two callers each need them (the single-MR tool and the
