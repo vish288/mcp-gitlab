@@ -14,6 +14,10 @@
 - chore: housekeeping remainder from the review pass (605c4a8)
 
 ### Other
+- build: fix the derive script after the manifest change (4c1782d)
+- build: derive the whole Gemini manifest from server.json (48ca1b0)
+- build: derive gemini-extension.json and llms.txt instead of hand-maintaining them (4f547c2)
+- deps: fastmcp 4.0.10 (8061107)
 
 
 ## [0.11.0] - 2026-09-26

@@ -185,6 +185,7 @@ def _params(**kw: Any) -> dict[str, Any]:
 
 
 def _variable_params(
+    *,
     value: str | None = None,
     variable_type: str | None = None,
     protected: bool | None = None,
@@ -2163,7 +2164,13 @@ async def gitlab_create_variable(
     environment_scope.
     """
     params = _variable_params(
-        value, variable_type, protected, masked, raw, environment_scope, description
+        value=value,
+        variable_type=variable_type,
+        protected=protected,
+        masked=masked,
+        raw=raw,
+        environment_scope=environment_scope,
+        description=description,
     )
     return _ok(
         await _get_client(ctx).post(
@@ -2200,7 +2207,14 @@ async def gitlab_update_variable(
     query = {"filter[environment_scope]": environment_scope} if environment_scope else None
     data = await _get_client(ctx).put(
         f"/projects/{_enc(project_id)}/variables/{key}",
-        _variable_params(value, variable_type, protected, masked, raw, None, description),
+        _variable_params(
+            value=value,
+            variable_type=variable_type,
+            protected=protected,
+            masked=masked,
+            raw=raw,
+            description=description,
+        ),
         params=query,
     )
     return _ok(data)
@@ -2275,7 +2289,13 @@ async def gitlab_create_group_variable(
     environment_scope.
     """
     params = _variable_params(
-        value, variable_type, protected, masked, raw, environment_scope, description
+        value=value,
+        variable_type=variable_type,
+        protected=protected,
+        masked=masked,
+        raw=raw,
+        environment_scope=environment_scope,
+        description=description,
     )
     return _ok(
         await _get_client(ctx).post(
@@ -2305,7 +2325,14 @@ async def gitlab_update_group_variable(
     return _ok(
         await _get_client(ctx).put(
             f"/groups/{_enc(group_id)}/variables/{key}",
-            _variable_params(value, variable_type, protected, masked, raw, None, description),
+            _variable_params(
+                value=value,
+                variable_type=variable_type,
+                protected=protected,
+                masked=masked,
+                raw=raw,
+                description=description,
+            ),
         )
     )
 
