@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.1] - 2026-09-28
+
+### Bug Fixes
+- fix: close the closing-review findings on 0.12.0 (f653b53)
+
+
 ## [0.12.0] - 2026-09-27
 
 ### Refactoring
