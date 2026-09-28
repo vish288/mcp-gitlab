@@ -71,13 +71,13 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.next.outputs.version }}\"/" pyproject.toml
           cat pyproject.toml | grep '^version'
 
-      - name: Update llms.txt version
+      - name: Update llms-full.txt version
         run: |
-          for f in llms.txt llms-full.txt; do
+          for f in llms-full.txt; do
             [ -f "$f" ] && sed -i 's/^- \*\*Version\*\*: .*/- **Version**: ${{ steps.next.outputs.version }}/' "$f"
           done
 
-      - name: Update server.json and gemini-extension.json versions
+      - name: Update server.json version
         env:
           NEXT_VERSION: ${{ steps.next.outputs.version }}
         run: |
@@ -93,13 +93,6 @@ jobs:
           for pkg in data.get("packages", []):
               pkg["version"] = version
           with open("server.json", "w") as f:
-              json.dump(data, f, indent=2)
-              f.write("\n")
-
-          with open("gemini-extension.json") as f:
-              data = json.load(f)
-          data["version"] = version
-          with open("gemini-extension.json", "w") as f:
               json.dump(data, f, indent=2)
               f.write("\n")
           PY
@@ -145,12 +138,13 @@ jobs:
 
           # Collect commits that don't match any conventional type
           other=$(printf '%s\n' "$ALL_COMMITS" \
-            | { grep -v -E "^(feat|fix|refactor|docs|perf|test|chore)(\(.*\))?!?:" || true; })
+            | { grep -v -E "^(feat|fix|refactor|docs|perf|test|chore)(\(.*\))?!?:" || true; } \
+            | while IFS='|' read -r msg hash; do
+                if [ -n "$msg" ]; then printf -- "- %s (%s)\n" "$msg" "$hash"; fi
+              done)
           if [ -n "$other" ]; then
             ENTRY+=$'\n'"### Other"$'\n'
-            echo "$other" | while IFS='|' read -r msg hash; do
-              ENTRY+="- ${msg} (${hash})"$'\n'
-            done
+            ENTRY+="${other}"$'\n'
           fi
 
           # Prepend to existing CHANGELOG.md or create new

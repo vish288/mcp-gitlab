@@ -6,11 +6,10 @@ Both files stay committed on purpose: the Gemini CLI installs
 from ``main``. Hand-maintaining them let their versions drift from
 ``server.json``; instead a release bumps only the sources and runs this script.
 
-- ``gemini-extension.json``: ``name`` and ``version`` come from ``server.json``
-  (``name`` is the last path segment of the registry name). The Gemini-specific
-  presentation fields (``description``, ``mcpServers``, ``settings``) are the
-  extension's own and are kept here verbatim -- ``server.json``'s description and
-  environment-variable list intentionally differ from what the Gemini CLI shows.
+- ``gemini-extension.json``: derived entirely from ``server.json`` -- ``name`` and
+  ``version`` from the package identifier and version, ``description`` from the
+  registry description, ``settings`` from ``environmentVariables`` under Gemini's
+  field names (``required``/``sensitive``).
 - ``llms.txt``: the byte-exact prefix of ``llms-full.txt`` up to the first
   section that only the full document carries (``## Configuration``).
 
@@ -56,7 +55,7 @@ def derive_gemini_extension() -> str:
 
 def derive_llms_txt() -> str:
     """Return llms.txt: the prefix of llms-full.txt before ## Configuration."""
-    full = (ROOT / "llms-full.txt").read_text()
+    full = (ROOT / "llms-full.txt").read_text(encoding="utf-8")
     if LLMS_SPLIT_MARKER not in full:
         msg = (
             f"llms-full.txt has no {LLMS_SPLIT_MARKER!r} section; llms.txt can no "
@@ -67,10 +66,13 @@ def derive_llms_txt() -> str:
 
 
 def main() -> int:
-    (ROOT / "gemini-extension.json").write_text(derive_gemini_extension())
-    (ROOT / "llms.txt").write_text(derive_llms_txt())
+    (ROOT / "gemini-extension.json").write_text(derive_gemini_extension(), encoding="utf-8")
+    (ROOT / "llms.txt").write_text(derive_llms_txt(), encoding="utf-8")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
