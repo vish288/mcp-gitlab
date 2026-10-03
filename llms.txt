@@ -8,7 +8,8 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 - **Version**: 0.12.1
 - **Python**: >=3.10
 - **License**: MIT
-- **Transport**: stdio (default), SSE, streamable-http
+- **Protocol**: MCP 2026-07-28 (MCP 2.0); compatible with 2025-11-25 clients; built on FastMCP 4.x
+- **Transport**: stdio (default), streamable-http (recommended for remote), SSE (deprecated by the 2026-07-28 spec)
 - **Registry**: `io.github.vish288/mcp-gitlab`
 - **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
 - **Optional env vars**: `GITLAB_READ_ONLY` (disable writes), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification)

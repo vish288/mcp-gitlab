@@ -8,7 +8,8 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 - **Version**: 0.12.1
 - **Python**: >=3.10
 - **License**: MIT
-- **Transport**: stdio (default), SSE, streamable-http
+- **Protocol**: MCP 2026-07-28 (MCP 2.0); compatible with 2025-11-25 clients; built on FastMCP 4.x
+- **Transport**: stdio (default), streamable-http (recommended for remote), SSE (deprecated by the 2026-07-28 spec)
 - **Registry**: `io.github.vish288/mcp-gitlab`
 - **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
 - **Optional env vars**: `GITLAB_READ_ONLY` (disable writes), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification)
@@ -44,9 +45,11 @@ Token environment variables are checked in order: `GITLAB_TOKEN`, `GITLAB_PAT`, 
 # Default: stdio transport (for MCP clients)
 uvx mcp-gitlab
 
-# HTTP transport (SSE or streamable-http)
-uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
+# HTTP transport — streamable-http is recommended for remote use
 uvx mcp-gitlab --transport streamable-http --port 9000
+
+# SSE transport — deprecated by MCP 2026-07-28; still works, prints a warning
+uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
 
 # CLI overrides for config
 uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
@@ -458,4 +461,4 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-Dependencies: fastmcp>=2.13.0, httpx>=0.28.0, pydantic>=2.10.0, python-dotenv>=1.0.1, click>=8.1.7
+Dependencies: fastmcp>=4.0.10, httpx>=0.28.0, pydantic>=2.10.0, python-dotenv>=1.0.1, click>=8.1.7

@@ -13,7 +13,9 @@
 
 Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
 
-Built with [FastMCP](https://github.com/jlowin/fastmcp), [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
+Supports the MCP 2026-07-28 specification, often called MCP 2.0, and stays compatible with 2025-11-25 clients.
+
+Built with [FastMCP](https://github.com/jlowin/fastmcp) 4.x, [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
 
 **Install:** `uvx mcp-gitlab` | [PyPI](https://pypi.org/project/mcp-gitlab/) | [MCP Registry](https://registry.modelcontextprotocol.io) | [Changelog](https://github.com/vish288/mcp-gitlab/releases)
 
@@ -110,6 +112,16 @@ These accept any of the following token types:
 | VS Code Copilot | Yes | One-click deeplink or `.vscode/mcp.json` |
 | Windsurf | Yes | `~/.codeium/windsurf/mcp_config.json` |
 | Any MCP client | Yes | stdio or HTTP transport |
+
+## Protocol support
+
+mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 specification, often called MCP 2.0. It stays compatible with 2025-11-25 clients.
+
+- **Specification**: MCP 2026-07-28 (MCP 2.0). Verified over `stdio` and `streamable-http`.
+- **Legacy clients**: 2025-11-25 clients still work.
+- **Built on**: FastMCP 4.x and the MCP Python SDK 2.x.
+- **Transports**: `stdio` (default) and `streamable-http` (recommended for remote). The `sse` (HTTP+SSE) transport still works, but the 2026-07-28 specification deprecates it. The server prints a warning when you use it.
+- **Capabilities**: tools, resources, and prompts. The server uses no roots, sampling, logging, elicitation, or resource subscriptions, so the 2026-07-28 deprecations do not affect it.
 
 ## Tools (83)
 
@@ -385,15 +397,47 @@ GitLab enforces per-user rate limits (default: 2000 requests/minute for authenti
 # Default: stdio transport (for MCP clients)
 uvx mcp-gitlab
 
-# HTTP transport (SSE or streamable-http)
-uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
+# HTTP transport — streamable-http is recommended for remote use
 uvx mcp-gitlab --transport streamable-http --port 9000
+
+# SSE transport — deprecated by MCP 2026-07-28; still works, prints a warning
+uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
 
 # CLI overrides for config
 uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
 ```
 
 The server loads `.env` files from the working directory automatically via `python-dotenv`.
+
+## FAQ
+
+### Does mcp-gitlab support MCP 2.0?
+
+Yes. It supports the MCP 2026-07-28 specification, often called MCP 2.0. It also stays compatible with 2025-11-25 clients.
+
+### Does it work with self-hosted GitLab?
+
+Yes. It works with GitLab.com and self-hosted GitLab (CE and EE). It needs no GitLab Duo or Premium.
+
+### Which transports does it support?
+
+It supports `stdio` (the default) and `streamable-http`. The `sse` transport still works, but the 2026-07-28 specification deprecates it.
+
+### Is mcp-gitlab safe for read-only use?
+
+Yes. Set `GITLAB_READ_ONLY=true` to disable every create, update, delete, and merge. The server enforces this before any API call.
+
+### What token scopes does it need?
+
+Use a token with the `api` scope for full access. Use the `read_api` scope for read-only deployments. The server reads the token from the environment and never stores it.
+
+### Which AI assistants work with it?
+
+It works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+
+### How do I install mcp-gitlab?
+
+Run `uvx mcp-gitlab`, or add it to your MCP client configuration. See the installation section above.
 
 ## Related MCP Servers
 
