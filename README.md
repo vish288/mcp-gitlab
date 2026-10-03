@@ -9,7 +9,7 @@
 
 <!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
-**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API that provides **83 tools**, **7 resources**, and **6 prompts** for AI assistants to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, code reviews, and more. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API. It gives AI assistants **83 tools**, **7 resources**, and **6 prompts** to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, and code reviews. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
 Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
 
@@ -369,11 +369,11 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 ## Security Considerations
 
 - **Token scope**: Use the minimum required scope. `api` scope grants full access; prefer `read_api` for read-only deployments.
-- **Read-only mode**: Set `GITLAB_READ_ONLY=true` to disable all write operations (create, update, delete, merge). Read-only mode is enforced server-side before any API call.
+- **Read-only mode**: Set `GITLAB_READ_ONLY=true` to disable all write operations (create, update, delete, merge). The server enforces read-only mode before any API call.
 - **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
-- **No credential storage**: The server does not persist tokens. Credentials are read from environment variables at startup.
+- **No credential storage**: The server does not persist tokens. The server reads credentials from environment variables at startup.
 
 ## Rate Limits & Permissions
 

@@ -1,6 +1,6 @@
 # mcp-gitlab
 
-> MCP server for the GitLab REST API — 83 tools, 7 resources, and 6 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
+> MCP server for the GitLab REST API. It gives AI assistants 83 tools, 7 resources, and 6 prompts to manage projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
 
 MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
@@ -37,7 +37,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
 
-Token environment variables are checked in order: `GITLAB_TOKEN`, `GITLAB_PAT`, `GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN`. First match wins.
+The server checks the token environment variables in this order: `GITLAB_TOKEN`, `GITLAB_PAT`, `GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN`. The first match wins.
 
 ### CLI Options
 
@@ -443,7 +443,7 @@ The server provides MCP prompts — reusable multi-tool workflow templates that 
 - **SSL verification**: `true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically return `***MASKED***` for masked variables.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
-- **No credential storage**: The server does not persist tokens. Credentials are read from environment variables at startup.
+- **No credential storage**: The server does not persist tokens. The server reads credentials from environment variables at startup.
 
 ## Rate Limits
 
