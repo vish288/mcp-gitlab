@@ -13,7 +13,7 @@ from dotenv import load_dotenv
     "--transport",
     type=click.Choice(["stdio", "sse", "streamable-http"]),
     default="stdio",
-    help="MCP transport type",
+    help="MCP transport type (sse is deprecated; use streamable-http)",
 )
 @click.option("--port", default=8000, help="Port for HTTP transports")
 @click.option("--host", default="127.0.0.1", help="Host for HTTP transports")
@@ -37,6 +37,13 @@ def main(
         os.environ["GITLAB_TOKEN"] = gitlab_token
     if read_only:
         os.environ["GITLAB_READ_ONLY"] = "true"
+
+    if transport == "sse":
+        click.echo(
+            "Warning: --transport sse uses the HTTP+SSE transport, deprecated in MCP 2026-07-28. "
+            "Use --transport streamable-http.",
+            err=True,
+        )
 
     logging.basicConfig(
         level=logging.INFO,

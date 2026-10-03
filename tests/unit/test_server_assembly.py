@@ -40,3 +40,15 @@ async def test_real_lifespan_registers_everything(monkeypatch):
         for resource in resources:
             (content,) = await client.read_resource(resource.uri)
             assert content.text.lstrip().startswith("#"), resource.uri
+
+
+async def test_2026_07_28_support(monkeypatch):
+    monkeypatch.setenv("GITLAB_URL", "https://gitlab.example.com")
+    monkeypatch.setenv("GITLAB_TOKEN", "test-token")
+    monkeypatch.delenv("GITLAB_READ_ONLY", raising=False)
+    for module in ("mcp_gitlab.servers.resources", "mcp_gitlab.servers.prompts"):
+        importlib.import_module(module)
+
+    async with Client(mcp, mode="2026-07-28") as client:
+        tools = await client.list_tools()
+        assert len(tools) == 83
