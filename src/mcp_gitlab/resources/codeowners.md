@@ -2,10 +2,12 @@
 
 ## File Location
 
-GitLab searches in order:
+GitLab uses the first file it finds, so root takes precedence:
 1. `CODEOWNERS` (root)
 2. `docs/CODEOWNERS`
-3. `.gitlab/CODEOWNERS` (preferred)
+3. `.gitlab/CODEOWNERS`
+
+Pick one location per repository. Teams often keep it in `.gitlab/` to avoid root clutter.
 
 ## Syntax
 
@@ -92,4 +94,4 @@ Causes:
 2. Owner is an individual who left — replace with group
 3. Group doesn't have access to the project — share project with group first
 4. Section requires N approvals but group has <N members with project access
-5. CODEOWNERS file is in wrong location — check `.gitlab/CODEOWNERS` first
+5. CODEOWNERS file is in an unexpected location — GitLab reads only the first of root, `docs/`, then `.gitlab/`
