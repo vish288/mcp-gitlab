@@ -44,7 +44,7 @@ target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waive
 
 - All tools are `async def` returning JSON strings
 - `_ok(data)` for success, `_err(e)` for failure; `_paginated(items)` for list responses
-- Pipeline and job payloads are trimmed by `_slim_pipeline` / `_slim_job`; tools expose `slim=True` by default
+- `_slim_pipeline` / `_slim_job` trim pipeline and job payloads; tools expose `slim=True` by default
 - Write access control: `_check_write(ctx)` raises `GitLabWriteDisabledError` when `GITLAB_READ_ONLY=true`
 - Tags: every tool tagged with `{"gitlab", "<category>", "read"|"write"}`
 - Parameters use `Annotated[type, Field(description=...)]`
@@ -105,7 +105,7 @@ Every write tool MUST call `_check_write(ctx)` before any mutation.
 | CI/CD Variables | 8 | project and group variables (list, create, update, delete) |
 | Issues | 5 | list, get, create, update, add comment |
 
-Share/unshare tools are counted under Groups, not Projects. There is no `gitlab_list_jobs` —
+The table counts the share/unshare tools under Groups, not Projects. There is no `gitlab_list_jobs` —
 get job IDs from `gitlab_get_pipeline(..., include_jobs=True)`.
 
 ## Common Workflows
@@ -118,9 +118,9 @@ get job IDs from `gitlab_get_pipeline(..., include_jobs=True)`.
 
 ## Prompts
 
-Prompt content lives as `.md` files in `src/mcp_gitlab/resources/prompts/`, loaded by
-`servers/prompts.py` via `_load_prompt()` (`string.Template.safe_substitute` for parameters) and
-registered with `@mcp.prompt()`. Each returns `list[Message]`: a user message (workflow template)
+Prompt content lives as `.md` files in `src/mcp_gitlab/resources/prompts/`. `servers/prompts.py`
+loads each file via `_load_prompt()` (`string.Template.safe_substitute` for parameters) and
+registers it with `@mcp.prompt()`. Each returns `list[Message]`: a user message (workflow template)
 plus an assistant acknowledgment.
 
 | Prompt | Purpose | Tags |
@@ -142,9 +142,10 @@ plus an assistant acknowledgment.
 | `GITLAB_TIMEOUT` | no | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | no | `true` | `false`/`0`/`no` skips verification — self-signed certs only |
 
-Token is read from the first of `GITLAB_TOKEN`, `GITLAB_PAT`, `GITLAB_PERSONAL_ACCESS_TOKEN`,
-`GITLAB_API_TOKEN` that is set. Scope `api` for full access, `read_api` for read-only deployments.
-Tokens are never persisted — they are read from the environment at startup.
+The server reads the token from the first of `GITLAB_TOKEN`, `GITLAB_PAT`,
+`GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN` that is set. Scope `api` for full access,
+`read_api` for read-only deployments. The server never persists tokens; it reads them from the
+environment at startup.
 
 CLI flags override env: `--gitlab-url`, `--gitlab-token`, `--read-only`, plus
 `--transport {stdio,sse,streamable-http}` with `--host` (default `127.0.0.1`) and `--port`
@@ -171,7 +172,7 @@ Rules:
 - Never edit the `pyproject.toml` version directly — the workflow owns it.
 - Never create tags manually — the workflow creates them.
 - Commit messages must follow Conventional Commits (`feat:`, `fix:`, `docs:`, …) for changelog generation.
-- The release commit is authored by `github-actions[bot]` with message `chore(release): X.Y.Z`.
+- `github-actions[bot]` authors the release commit with the message `chore(release): X.Y.Z`.
 
 ## Documentation Freshness (mandatory)
 
@@ -190,6 +191,6 @@ complete; new entries appear in the right sections with parameters and annotatio
 
 ## Known Limitations
 
-- 83 tools in one server file, well past the 5-15 guideline. Split by category if it is refactored.
+- 83 tools in one server file, well past the 5-15 guideline. If you refactor it, split the tools by category.
 - Errors come back as successful tool results carrying `{"error": ...}` (soft-error pattern);
   callers must inspect the JSON content rather than relying on protocol-level errors.

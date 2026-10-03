@@ -1,6 +1,6 @@
 # mcp-gitlab
 
-> MCP server for the GitLab REST API — 83 tools, 7 resources, and 6 prompts for managing projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
+> MCP server for the GitLab REST API. It gives AI assistants 83 tools, 7 resources, and 6 prompts to manage projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
 
 MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
