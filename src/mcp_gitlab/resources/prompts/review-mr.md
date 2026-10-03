@@ -3,7 +3,7 @@
 ## Steps
 
 1. **Fetch MR details** — use `gitlab_get_mr` with project_id="$project_id" and mr_iid="$mr_iid". Note the author, source/target branches, description, and labels.
-2. **Check pipeline status** — use `gitlab_get_pipeline` with the pipeline ID from step 1. If CI has not passed, flag it before proceeding.
+2. **Check pipeline status** — use `gitlab_list_mr_pipelines` to find the latest pipeline for the MR. If its status is not `success`, flag it before proceeding.
 3. **Get the diff** — use `gitlab_mr_changes` to retrieve all changed files.
 4. **Review each changed file** — evaluate:
    - Correctness and logic errors

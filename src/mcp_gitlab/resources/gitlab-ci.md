@@ -20,7 +20,7 @@ workflow:
 
 ## `rules:` Over `only:`/`except:`
 
-`only`/`except` are deprecated since GitLab 12.3. Use `rules:` for all conditional job execution.
+`only`/`except` are deprecated. Use `rules:` for all conditional job execution.
 
 Rules evaluate top-to-bottom; the first match wins. Place exclusions first:
 
@@ -71,7 +71,7 @@ deploy:staging:
 Best practices:
 - Use `needs: []` for jobs with zero dependencies (start immediately)
 - Keep the DAG shallow — deep chains negate the parallelism benefit
-- Limit to 50 `needs:` entries per job (GitLab hard limit)
+- Limit to 50 `needs:` entries per job (GitLab default; raise it on self-managed via CI/CD limits)
 
 ## Notify-Slack Job Ordering
 
