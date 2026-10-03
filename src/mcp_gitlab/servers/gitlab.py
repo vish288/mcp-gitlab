@@ -72,7 +72,7 @@ mcp = FastMCP(
 
 
 def _get_client(ctx: Context) -> GitLabClient:
-    return ctx.request_context.lifespan_context["client"]
+    return ctx.lifespan_context["client"]
 
 
 # Encode a project/group id (numeric, path, or full URL) for a path segment.
@@ -80,7 +80,7 @@ _enc = GitLabClient._encode_id
 
 
 def _get_config(ctx: Context) -> GitLabConfig:
-    return ctx.request_context.lifespan_context["config"]
+    return ctx.lifespan_context["config"]
 
 
 def _check_write(ctx: Context) -> None:
