@@ -4,6 +4,17 @@ MCP server exposing 83 tools, 7 resources, and 6 prompts over the GitLab REST AP
 full project lifecycle: code, reviews, CI/CD, releases, and issue tracking. Works against
 GitLab.com and self-hosted instances.
 
+## Protocol Support
+
+Supports the MCP 2026-07-28 specification (MCP 2.0) and stays compatible with 2025-11-25
+clients. Built on FastMCP 4.x and the MCP Python SDK 2.x. Verified over `stdio` and
+`streamable-http`.
+
+Transports: `stdio` (default), `streamable-http` (recommended for remote), and `sse`. The
+2026-07-28 specification deprecates `sse`, so the server prints a warning when you use it. The
+server uses no roots, sampling, logging, elicitation, or resource subscriptions, so the
+2026-07-28 deprecations do not affect it.
+
 ## Architecture
 
 - **Entry point**: `src/mcp_gitlab/__init__.py` — click CLI, loads `.env` via python-dotenv, runs the FastMCP server

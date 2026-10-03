@@ -1,7 +1,7 @@
 [project]
 name = "mcp-gitlab"
 version = "0.12.1"
-description = "MCP server for GitLab API — projects, MRs, pipelines, CI/CD variables, approvals, and more"
+description = "GitLab MCP server (MCP 2.0): manage projects, MRs, pipelines, CI/CD, approvals, and issues for AI assistants"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -16,6 +16,7 @@ keywords = [
     "llm",
     "ai",
     "ai-agent",
+    "ai-agents",
     "claude",
     "merge-requests",
     "pipelines",
