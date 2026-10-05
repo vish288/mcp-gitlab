@@ -204,3 +204,65 @@ class TestRequest:
         )
         await client.get(f"/projects/{GitLabClient._encode_id('my-group/my-project')}")
         assert route.called
+
+
+class TestAuthHeaders:
+    async def test_private_token_header_unchanged(self, client, mock_api):
+        """R16: token mode still sends PRIVATE-TOKEN on a plain GET and on get_paged."""
+        get = mock_api.get("/projects/1").mock(return_value=httpx.Response(200, json={"id": 1}))
+        await client.get("/projects/1")
+        assert get.calls.last.request.headers["PRIVATE-TOKEN"] == "test-token"
+
+        paged = mock_api.get("/projects/1/issues").mock(return_value=httpx.Response(200, json=[]))
+        await client.get_paged("/projects/1/issues")
+        assert paged.calls.last.request.headers["PRIVATE-TOKEN"] == "test-token"
+
+    async def test_with_bearer_shares_pool_and_sets_header(self, client, mock_api):
+        other = client.with_bearer("glo-token")
+        assert other._client is client._client  # same connection pool
+
+        route = mock_api.get("/projects/1").mock(return_value=httpx.Response(200, json={"id": 1}))
+        await other.get("/projects/1")
+        req = route.calls.last.request
+        assert req.headers["Authorization"] == "Bearer glo-token"
+        assert "PRIVATE-TOKEN" not in req.headers
+
+        await client.get("/projects/1")  # original still sends PRIVATE-TOKEN
+        req2 = route.calls.last.request
+        assert req2.headers["PRIVATE-TOKEN"] == "test-token"
+        assert "Authorization" not in req2.headers
+
+    async def test_no_token_no_auth_header(self, mock_api):
+        """OAuth-mode config (no PAT) builds a client with no PRIVATE-TOKEN header."""
+        from mcp_gitlab.config import GitLabConfig
+
+        gl = GitLabClient(
+            GitLabConfig(
+                url="https://gitlab.example.com",
+                auth="oauth",
+                oauth_client_id="app",
+                oauth_client_secret="s3cret",
+                oauth_base_url="https://mcp.example.com",
+            )
+        )
+        route = mock_api.get("/projects/1").mock(return_value=httpx.Response(200, json={"id": 1}))
+        await gl.get("/projects/1")
+        assert "PRIVATE-TOKEN" not in route.calls.last.request.headers
+        await gl.close()
+
+    async def test_set_cookie_is_not_stored_or_replayed(self, client, mock_api):
+        """Security: a Set-Cookie from GitLab must not persist on the shared
+        client (``with_bearer`` shares it across users) nor be sent on the next
+        request. Otherwise a ``_gitlab_session`` cookie would leak between users
+        in oauth mode."""
+        mock_api.get("/projects/1").mock(
+            return_value=httpx.Response(
+                200, json={"id": 1}, headers={"Set-Cookie": "_gitlab_session=abc; Path=/"}
+            )
+        )
+        await client.get("/projects/1")
+        assert len(client._client.cookies.jar) == 0  # nothing stored
+
+        nxt = mock_api.get("/projects/2").mock(return_value=httpx.Response(200, json={"id": 2}))
+        await client.get("/projects/2")
+        assert "cookie" not in nxt.calls.last.request.headers  # nothing replayed

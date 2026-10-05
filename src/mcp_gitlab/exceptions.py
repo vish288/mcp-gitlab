@@ -33,7 +33,16 @@ class GitLabNotFoundError(GitLabApiError):
 
 
 class GitLabWriteDisabledError(GitLabError):
-    """Raised when a write operation is attempted in read-only mode."""
+    """Raised when a write operation cannot proceed.
 
-    def __init__(self) -> None:
-        super().__init__("Write operations are disabled (GITLAB_READ_ONLY=true)")
+    ``reason="read_only"`` (default): ``GITLAB_READ_ONLY=true``.
+    ``reason="scope"``: oauth mode, the user's token lacks the ``api`` scope.
+    """
+
+    def __init__(self, reason: str = "read_only") -> None:
+        self.reason = reason
+        if reason == "scope":
+            msg = "Write operations need the GitLab 'api' scope; this OAuth token has read_api only"
+        else:
+            msg = "Write operations are disabled (GITLAB_READ_ONLY=true)"
+        super().__init__(msg)

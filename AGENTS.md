@@ -15,6 +15,12 @@ Transports: `stdio` (default), `streamable-http` (recommended for remote), and `
 server uses no roots, sampling, logging, elicitation, or resource subscriptions, so the
 2026-07-28 deprecations do not affect it.
 
+Authorization: with `--auth oauth` (streamable-http only) the server is an MCP 2026-07-28 resource
+server and OAuth proxy in front of GitLab (RFC 9728 PRM, RFC 8414 AS metadata, PKCE S256, per-user
+GitLab tokens). The auth MUSTs are covered by in-process HTTP tests in `tests/unit/test_oauth_http.py`,
+not by a CI conformance job: the MCP conformance suite has no server-side auth scenarios (`auth/*`
+are client scenarios), so a conformance job cannot prove them.
+
 ## Architecture
 
 - **Entry point**: `src/mcp_gitlab/__init__.py` — click CLI, loads `.env` via python-dotenv, runs the FastMCP server
@@ -24,6 +30,7 @@ server uses no roots, sampling, logging, elicitation, or resource subscriptions,
 - **Prompts**: `src/mcp_gitlab/servers/prompts.py` — 6 MCP prompts (multi-tool workflows)
 - **Helpers**: `src/mcp_gitlab/servers/_helpers.py` — cached file loader with path-traversal guard, plus GitLab URL parsers. Most tools accept a project ID, a path, *or* a full GitLab URL for `project_id`; MR and pipeline URLs also yield the iid/id
 - **Config**: `src/mcp_gitlab/config.py` — `GitLabConfig` dataclass built from env vars
+- **OAuth**: `src/mcp_gitlab/oauth.py` — `GitLabProvider` (a fastmcp `OAuthProxy` in front of GitLab) and `GitLabTokenVerifier` (validates a GitLab OAuth token via `GET /oauth/token/info`). Only used when `--auth oauth`
 - **Exceptions**: `src/mcp_gitlab/exceptions.py` — `GitLabError` base; `GitLabApiError`, `GitLabAuthError`, `GitLabNotFoundError`, `GitLabWriteDisabledError`
 - **Tests**: `tests/` — `unit/test_tools.py` (143 tool-level tests via the FastMCP in-memory client), plus `test_client.py`, `test_config.py`, `test_exceptions.py`, `test_prompts.py`, `test_resources.py`, and `tests/test_links.py`. Shared fixtures (`config`, `client`, `mock_api` via respx) live in `tests/conftest.py`
 
@@ -48,7 +55,7 @@ target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waive
 - Write access control: `_check_write(ctx)` raises `GitLabWriteDisabledError` when `GITLAB_READ_ONLY=true`
 - Tags: every tool tagged with `{"gitlab", "<category>", "read"|"write"}`
 - Parameters use `Annotated[type, Field(description=...)]`
-- Client uses httpx with `PRIVATE-TOKEN` header auth
+- Client auth is a per-request header: `PRIVATE-TOKEN` in token mode, `Bearer` from `get_access_token()` in oauth mode. `GitLabClient.with_bearer(token)` returns a shallow copy that shares the connection pool but swaps the auth header. The shared `httpx.AsyncClient` uses a cookie jar that rejects every cookie (empty-`allowed_domains` policy) so a `Set-Cookie` from GitLab is never stored on the shared client and replayed on another user's request
 - Project/group IDs can be numeric or URL-encoded paths
 - `gitlab_list_variables` / `gitlab_list_group_variables` return `***MASKED***` for variables GitLab marks as masked
 
@@ -141,6 +148,14 @@ plus an assistant acknowledgment.
 | `GITLAB_READ_ONLY` | no | `false` | `true`/`1`/`yes` disables all writes and deletes, enforced before any API call |
 | `GITLAB_TIMEOUT` | no | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | no | `true` | `false`/`0`/`no` skips verification — self-signed certs only |
+| `GITLAB_AUTH` | no | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy to GitLab; `streamable-http` only) |
+| `GITLAB_OAUTH_CLIENT_ID` | oauth | — | Application ID of the GitLab OAuth app |
+| `GITLAB_OAUTH_CLIENT_SECRET` | oauth | — | Its secret |
+| `GITLAB_OAUTH_BASE_URL` | oauth | — | Public URL of this server, no trailing slash; redirect URI `<base>/auth/callback`, resource `<base>/mcp` |
+| `GITLAB_OAUTH_SCOPES` | no | `api` | Space-separated GitLab scopes required on every request (`read_api` for read-only) |
+| `GITLAB_OAUTH_JWT_KEY` | no | derived | FastMCP JWT signing key, ≥ 32 random chars; set in production to survive a secret rotation |
+
+In oauth mode, `GITLAB_TOKEN` is ignored and the encrypted upstream-token store lives at `$FASTMCP_HOME/oauth-proxy/<fingerprint>/`. `GITLAB_READ_ONLY` still applies in both modes.
 
 The server reads the token from the first of `GITLAB_TOKEN`, `GITLAB_PAT`,
 `GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN` that is set. Scope `api` for full access,
@@ -194,3 +209,6 @@ complete; new entries appear in the right sections with parameters and annotatio
 - 83 tools in one server file, well past the 5-15 guideline. If you refactor it, split the tools by category.
 - Errors come back as successful tool results carrying `{"error": ...}` (soft-error pattern);
   callers must inspect the JSON content rather than relying on protocol-level errors.
+- OAuth mode makes one `GET /oauth/token/info` call to GitLab per MCP request (no token-info cache).
+  Add `fastmcp.utilities.token_cache.TokenCache` if GitLab rate-limits bite; revocation lag then
+  equals the cache TTL.

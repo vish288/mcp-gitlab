@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
 
 from ..client import GitLabClient
@@ -72,7 +73,13 @@ mcp = FastMCP(
 
 
 def _get_client(ctx: Context) -> GitLabClient:
-    return ctx.lifespan_context["client"]
+    client: GitLabClient = ctx.lifespan_context["client"]
+    if _get_config(ctx).auth != "oauth":
+        return client  # token mode: unchanged
+    tok = get_access_token()
+    if tok is None:  # cannot happen behind RequireAuthMiddleware; defensive
+        raise GitLabAuthError(401, "No OAuth access token on this request")
+    return client.with_bearer(tok.token)
 
 
 # Encode a project/group id (numeric, path, or full URL) for a path segment.
@@ -84,8 +91,13 @@ def _get_config(ctx: Context) -> GitLabConfig:
 
 
 def _check_write(ctx: Context) -> None:
-    if _get_config(ctx).read_only:
+    cfg = _get_config(ctx)
+    if cfg.read_only:
         raise GitLabWriteDisabledError
+    if cfg.auth == "oauth":
+        tok = get_access_token()
+        if tok is None or "api" not in tok.scopes:
+            raise GitLabWriteDisabledError(reason="scope")
 
 
 def _ok(data: Any) -> str:
@@ -164,9 +176,20 @@ def _err(error: Exception) -> str:
     elif isinstance(error, GitLabAuthError):
         detail["status_code"] = error.status_code
         detail["body"] = error.body
-        detail["hint"] = "Check GITLAB_TOKEN permissions. Token needs 'api' scope."
+        detail["hint"] = (
+            "Token rejected by GitLab. Token mode: check GITLAB_TOKEN has the 'api' scope. "
+            "OAuth mode: re-authorize in your MCP client."
+        )
     elif isinstance(error, GitLabWriteDisabledError):
-        detail["hint"] = "Server is in read-only mode. Set GITLAB_READ_ONLY=false to enable writes."
+        if error.reason == "scope":
+            detail["hint"] = (
+                "Re-authorize with the 'api' scope, or ask the operator to set "
+                "GITLAB_OAUTH_SCOPES=api."
+            )
+        else:
+            detail["hint"] = (
+                "Server is in read-only mode. Set GITLAB_READ_ONLY=false to enable writes."
+            )
     elif isinstance(error, GitLabApiError):
         detail["status_code"] = error.status_code
         detail["body"] = error.body

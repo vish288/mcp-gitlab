@@ -13,7 +13,7 @@
   "settings": [
     {
       "name": "GITLAB_TOKEN",
-      "description": "GitLab personal access token (also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN)",
+      "description": "GitLab personal access token (token mode; also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN)",
       "required": true,
       "sensitive": true
     },
@@ -28,6 +28,42 @@
       "description": "Restrict to read-only operations (true/false)",
       "required": false,
       "sensitive": false
+    },
+    {
+      "name": "GITLAB_AUTH",
+      "description": "Authentication mode: token (default) or oauth (OAuth 2.1 proxy; streamable-http only)",
+      "required": false,
+      "sensitive": false
+    },
+    {
+      "name": "GITLAB_OAUTH_CLIENT_ID",
+      "description": "Application ID of the GitLab OAuth app (oauth mode)",
+      "required": false,
+      "sensitive": false
+    },
+    {
+      "name": "GITLAB_OAUTH_CLIENT_SECRET",
+      "description": "Secret of the GitLab OAuth app (oauth mode)",
+      "required": false,
+      "sensitive": true
+    },
+    {
+      "name": "GITLAB_OAUTH_BASE_URL",
+      "description": "Public URL of this server, no trailing slash (oauth mode); redirect URI is <base>/auth/callback",
+      "required": false,
+      "sensitive": false
+    },
+    {
+      "name": "GITLAB_OAUTH_SCOPES",
+      "description": "Space-separated GitLab scopes required on every request (oauth mode; default api)",
+      "required": false,
+      "sensitive": false
+    },
+    {
+      "name": "GITLAB_OAUTH_JWT_KEY",
+      "description": "FastMCP JWT signing key, >=32 random chars (oauth mode; defaults to one derived from the client secret)",
+      "required": false,
+      "sensitive": true
     }
   ]
 }

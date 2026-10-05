@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 from click.testing import CliRunner
@@ -25,4 +26,47 @@ def test_sse_deprecation_warning():
             in result.output
         )
         assert "Use --transport streamable-http" in result.output
+        mock_run.assert_called_once()
+
+
+def test_oauth_requires_streamable_http():
+    """R15: --auth oauth on stdio is a usage error before anything runs."""
+    runner = CliRunner()
+    # Isolate os.environ: main() writes GITLAB_AUTH before the guard raises.
+    with (
+        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch.dict("os.environ", {}, clear=False),
+    ):
+        result = runner.invoke(main, ["--auth", "oauth"])
+    assert result.exit_code == 2
+    assert "requires --transport streamable-http" in result.output
+    mock_run.assert_not_called()
+
+
+def test_oauth_rejected_on_sse():
+    runner = CliRunner()
+    with (
+        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch.dict("os.environ", {}, clear=False),
+    ):
+        result = runner.invoke(main, ["--auth", "oauth", "--transport", "sse"])
+    assert result.exit_code == 2
+    assert "requires --transport streamable-http" in result.output
+    mock_run.assert_not_called()
+
+
+def test_stdio_default_does_not_set_oauth():
+    """R15: a plain stdio run leaves GITLAB_AUTH at 'token'."""
+    runner = CliRunner()
+    with (
+        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch.dict(
+            "os.environ",
+            {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_TOKEN": "t"},
+            clear=False,
+        ),
+    ):
+        result = runner.invoke(main, ["--transport", "stdio"])
+        assert result.exit_code == 0
+        assert os.environ["GITLAB_AUTH"] == "token"
         mock_run.assert_called_once()

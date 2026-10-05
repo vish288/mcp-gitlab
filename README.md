@@ -80,10 +80,11 @@ uv pip install mcp-gitlab
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
-| `GITLAB_TOKEN` | **Yes** | - | Authentication token (see below) |
+| `GITLAB_TOKEN` | **Yes** (token mode) | - | Authentication token (see below) |
 | `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
+| `GITLAB_AUTH` | No | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy; see below) |
 
 ### Supported Token Types
 
@@ -101,6 +102,48 @@ These accept any of the following token types:
 | Personal access token | `glpat-xxx` | User-level access with `api` scope |
 | OAuth2 token | `oauth-xxx` | OAuth app integrations |
 | CI job token | `$CI_JOB_TOKEN` | GitLab CI pipeline access |
+
+## OAuth 2.1 (remote deployments)
+
+For a server shared by several people, `--auth oauth` turns mcp-gitlab into an
+MCP 2026-07-28 resource server with GitLab as the upstream OAuth provider: each
+user signs in with their own GitLab account, every request runs with that
+user's token, and no personal access token is configured on the server. Use it
+when you host the server once and multiple users connect to it; keep the
+default `--auth token` for a single-user local setup.
+
+OAuth mode requires `--transport streamable-http` (OAuth applies to HTTP only;
+stdio keeps using the environment token).
+
+**1. Register a GitLab OAuth application** (User Settings → Applications, or a
+group/instance application). Set the redirect URI to `<base>/auth/callback`
+(e.g. `https://mcp.example.com/auth/callback`), mark it confidential, and grant
+the `api` scope (or `read_api` for a read-only deployment). Copy the
+Application ID and Secret.
+
+**2. Configure the server:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITLAB_URL` | **Yes** | - | GitLab instance; also the upstream authorization server |
+| `GITLAB_OAUTH_CLIENT_ID` | **Yes** | - | Application ID of the GitLab OAuth app |
+| `GITLAB_OAUTH_CLIENT_SECRET` | **Yes** | - | Its secret |
+| `GITLAB_OAUTH_BASE_URL` | **Yes** | - | Public URL of this server, no trailing slash (e.g. `https://mcp.example.com`). Resource URL is `<base>/mcp` |
+| `GITLAB_OAUTH_SCOPES` | No | `api` | Space-separated GitLab scopes required on every request. Use `read_api` for a read-only deployment |
+| `GITLAB_OAUTH_JWT_KEY` | No | derived | FastMCP JWT signing key, ≥ 32 random chars. Set it in production so client registrations survive a client-secret rotation |
+| `FASTMCP_HOME` | No | platform data dir | The encrypted token store lives at `$FASTMCP_HOME/oauth-proxy/<fingerprint>/` |
+
+```bash
+GITLAB_URL=https://gitlab.com GITLAB_AUTH=oauth \
+  GITLAB_OAUTH_CLIENT_ID=... GITLAB_OAUTH_CLIENT_SECRET=... \
+  GITLAB_OAUTH_BASE_URL=https://mcp.example.com \
+  uvx mcp-gitlab --transport streamable-http
+```
+
+Point an MCP client (or the MCP Inspector, `pnpm dlx @modelcontextprotocol/inspector`)
+at `<base>/mcp`; it discovers the authorization server, runs the OAuth flow, and
+each tool call then uses that user's GitLab token. A `read_api`-only token can
+read but is refused writes with an actionable hint.
 
 ## Compatibility
 
@@ -403,9 +446,15 @@ uvx mcp-gitlab --transport streamable-http --port 9000
 # SSE transport — deprecated by MCP 2026-07-28; still works, prints a warning
 uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
 
+# OAuth 2.1 mode (per-user GitLab sign-in; streamable-http only) — see "OAuth 2.1" above
+uvx mcp-gitlab --auth oauth --transport streamable-http
+
 # CLI overrides for config
 uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
 ```
+
+`--auth {token,oauth}` selects the authentication mode (`token` by default);
+`oauth` requires `--transport streamable-http`.
 
 The server loads `.env` files from the working directory automatically via `python-dotenv`.
 
@@ -421,7 +470,7 @@ Yes. It works with GitLab.com and self-hosted GitLab (CE and EE). It needs no Gi
 
 ### Which transports does it support?
 
-It supports `stdio` (the default) and `streamable-http`. The `sse` transport still works, but the 2026-07-28 specification deprecates it.
+It supports `stdio` (the default) and `streamable-http`. The `sse` transport still works, but the 2026-07-28 specification deprecates it. OAuth 2.1 mode (`--auth oauth`) is available on `streamable-http` only.
 
 ### Is mcp-gitlab safe for read-only use?
 

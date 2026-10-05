@@ -20,6 +20,13 @@ from dotenv import load_dotenv
 @click.option("--gitlab-url", envvar="GITLAB_URL", help="GitLab instance URL")
 @click.option("--gitlab-token", envvar="GITLAB_TOKEN", help="GitLab personal access token")
 @click.option("--read-only", is_flag=True, help="Disable write operations")
+@click.option(
+    "--auth",
+    type=click.Choice(["token", "oauth"]),
+    envvar="GITLAB_AUTH",
+    default="token",
+    help="token (PAT from env, default) or oauth (OAuth 2.1 proxy to GitLab; streamable-http only)",
+)
 def main(
     transport: str,
     port: int,
@@ -27,6 +34,7 @@ def main(
     gitlab_url: str | None,
     gitlab_token: str | None,
     read_only: bool,
+    auth: str,
 ) -> None:
     """Run the GitLab MCP server."""
     load_dotenv()
@@ -37,6 +45,14 @@ def main(
         os.environ["GITLAB_TOKEN"] = gitlab_token
     if read_only:
         os.environ["GITLAB_READ_ONLY"] = "true"
+    os.environ["GITLAB_AUTH"] = auth
+
+    if auth == "oauth" and transport != "streamable-http":
+        msg = (
+            "--auth oauth requires --transport streamable-http "
+            "(OAuth applies to HTTP only; stdio uses env credentials)"
+        )
+        raise click.UsageError(msg)
 
     if transport == "sse":
         click.echo(
@@ -52,6 +68,17 @@ def main(
 
     from .servers import prompts, resources  # noqa: F401 — registers decorators
     from .servers.gitlab import mcp
+
+    if auth == "oauth":
+        from .config import GitLabConfig
+        from .oauth import GitLabProvider
+
+        cfg = GitLabConfig.from_env()
+        cfg.validate()
+        mcp.auth = GitLabProvider(cfg)
+        logging.getLogger(__name__).info(
+            "Auth: oauth (GitLab app %s, scopes %s)", cfg.oauth_client_id, cfg.oauth_scopes
+        )
 
     run_kwargs: dict = {"transport": transport}
     if transport != "stdio":

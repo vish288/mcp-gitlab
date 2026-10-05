@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import http.cookiejar
 import json
 import re
 from typing import Any
@@ -45,18 +47,43 @@ class GitLabClient:
     path segment.
     """
 
-    def __init__(self, config: GitLabConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: GitLabConfig | None = None,
+        *,
+        auth_headers: dict[str, str] | None = None,
+    ) -> None:
         self.config = config or GitLabConfig.from_env()
         self.config.validate()
+        if auth_headers is None:
+            auth_headers = {"PRIVATE-TOKEN": self.config.token} if self.config.token else {}
+        self._auth_headers = auth_headers
         self._client = httpx.AsyncClient(
             base_url=self.config.api_url,
-            headers={
-                "PRIVATE-TOKEN": self.config.token,
-                "Content-Type": "application/json",
-            },
+            headers={"Content-Type": "application/json"},
             timeout=self.config.timeout,
             verify=self.config.ssl_verify,
+            # Reject every cookie. The GitLab REST API needs none, and in oauth
+            # mode ``with_bearer`` shares this one client across users; without
+            # this, a ``Set-Cookie`` (e.g. ``_gitlab_session``) would be stored
+            # on the shared jar and replayed on another user's request — GitLab
+            # honours session cookies on GET, so that is a cross-user identity
+            # leak. An empty allowed_domains policy stores nothing.
+            cookies=http.cookiejar.CookieJar(
+                policy=http.cookiejar.DefaultCookiePolicy(allowed_domains=[])
+            ),
         )
+
+    def with_bearer(self, token: str) -> GitLabClient:
+        """Same connection pool, this request's OAuth token.
+
+        Returns a shallow copy that shares ``_client`` (and so the pool); the
+        caller must not close it. Used in oauth mode, where each MCP request
+        carries a different user's GitLab token.
+        """
+        other = copy.copy(self)
+        other._auth_headers = {"Authorization": f"Bearer {token}"}
+        return other
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -89,7 +116,7 @@ class GitLabClient:
         raw: bool = False,
     ) -> Any:
         """Make an API request and return parsed JSON (or raw text if raw=True)."""
-        kwargs: dict[str, Any] = {"params": params}
+        kwargs: dict[str, Any] = {"params": params, "headers": self._auth_headers}
         if json_data is not None:
             kwargs["json"] = json_data
 
@@ -149,7 +176,7 @@ class GitLabClient:
         every list tool silently truncated with no way to ask for the rest.
         ``next_page`` is None on the last page.
         """
-        resp = await self._client.request("GET", path, params=params)
+        resp = await self._client.request("GET", path, params=params, headers=self._auth_headers)
         self._raise_for_status(resp)
 
         items = self._parse_body(resp)
