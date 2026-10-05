@@ -18,7 +18,7 @@
       "environmentVariables": [
         {
           "name": "GITLAB_TOKEN",
-          "description": "GitLab personal access token (also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN)",
+          "description": "GitLab personal access token (token mode; also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN)",
           "isRequired": true,
           "format": "string",
           "isSecret": true
@@ -36,6 +36,48 @@
           "isRequired": false,
           "format": "string",
           "isSecret": false
+        },
+        {
+          "name": "GITLAB_AUTH",
+          "description": "Authentication mode: token (default) or oauth (OAuth 2.1 proxy; streamable-http only)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_CLIENT_ID",
+          "description": "Application ID of the GitLab OAuth app (oauth mode)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_CLIENT_SECRET",
+          "description": "Secret of the GitLab OAuth app (oauth mode)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "GITLAB_OAUTH_BASE_URL",
+          "description": "Public URL of this server, no trailing slash (oauth mode); redirect URI is <base>/auth/callback",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_SCOPES",
+          "description": "Space-separated GitLab scopes required on every request (oauth mode; default api)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_JWT_KEY",
+          "description": "FastMCP JWT signing key, >=32 random chars (oauth mode; defaults to one derived from the client secret)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
         }
       ]
     }

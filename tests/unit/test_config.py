@@ -88,3 +88,56 @@ def test_config_url_strips_trailing_slash():
     with patch.dict(os.environ, env, clear=False):
         config = GitLabConfig.from_env()
     assert config.url == "https://gitlab.example.com"
+
+
+def test_oauth_mode_requires_client_fields():
+    """All three missing OAuth vars are named in one message."""
+    config = GitLabConfig(url="https://gitlab.example.com", auth="oauth")
+    with pytest.raises(ValueError) as exc:
+        config.validate()
+    msg = str(exc.value)
+    assert "GITLAB_OAUTH_CLIENT_ID" in msg
+    assert "GITLAB_OAUTH_CLIENT_SECRET" in msg
+    assert "GITLAB_OAUTH_BASE_URL" in msg
+
+
+def test_oauth_mode_does_not_require_token():
+    """OAuth mode validates with the three client fields and no PAT."""
+    config = GitLabConfig(
+        url="https://gitlab.example.com",
+        auth="oauth",
+        oauth_client_id="app",
+        oauth_client_secret="s3cret",
+        oauth_base_url="https://mcp.example.com",
+    )
+    config.validate()  # no raise
+
+
+def test_token_mode_unchanged():
+    """Default auth is token; a token is still required."""
+    config = GitLabConfig(url="https://gitlab.example.com", token="")
+    assert config.auth == "token"
+    with pytest.raises(ValueError, match="GitLab token is required"):
+        config.validate()
+
+
+def test_invalid_auth_value():
+    config = GitLabConfig(url="https://gitlab.example.com", token="x", auth="bogus")
+    with pytest.raises(ValueError, match="GITLAB_AUTH must be"):
+        config.validate()
+
+
+def test_scopes_property_splits():
+    assert GitLabConfig(oauth_scopes="api read_user").scopes == ["api", "read_user"]
+    assert GitLabConfig().scopes == ["api"]
+
+
+def test_oauth_base_url_strips_trailing_slash():
+    env = {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_AUTH": "oauth",
+        "GITLAB_OAUTH_BASE_URL": "https://mcp.example.com/",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        config = GitLabConfig.from_env()
+    assert config.oauth_base_url == "https://mcp.example.com"

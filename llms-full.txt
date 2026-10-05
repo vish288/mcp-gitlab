@@ -12,7 +12,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 - **Transport**: stdio (default), streamable-http (recommended for remote), SSE (deprecated by the 2026-07-28 spec)
 - **Registry**: `io.github.vish288/mcp-gitlab`
 - **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
-- **Optional env vars**: `GITLAB_READ_ONLY` (disable writes), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification)
+- **Optional env vars**: `GITLAB_READ_ONLY` (disable writes), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification), `GITLAB_AUTH` (`token` default or `oauth` for per-user OAuth 2.1; see Configuration)
 
 ## Documentation
 
@@ -32,12 +32,29 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | Yes | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
-| `GITLAB_TOKEN` | Yes | - | Authentication token (`glpat-xxx` personal access token, OAuth2 token, or CI job token) |
+| `GITLAB_TOKEN` | Yes (token mode) | - | Authentication token (`glpat-xxx` personal access token, OAuth2 token, or CI job token) |
 | `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
+| `GITLAB_AUTH` | No | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy to GitLab; `streamable-http` only) |
 
 The server checks the token environment variables in this order: `GITLAB_TOKEN`, `GITLAB_PAT`, `GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN`. The first match wins.
+
+### OAuth 2.1 (remote deployments)
+
+With `GITLAB_AUTH=oauth` and `--transport streamable-http`, the server becomes an
+MCP 2026-07-28 resource server that proxies OAuth to GitLab: each user signs in
+with their own GitLab account and every request runs with that user's token, so
+no PAT is configured on the server. Requires a GitLab OAuth app:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GITLAB_OAUTH_CLIENT_ID` | Yes (oauth) | - | Application ID of the GitLab OAuth app |
+| `GITLAB_OAUTH_CLIENT_SECRET` | Yes (oauth) | - | Its secret |
+| `GITLAB_OAUTH_BASE_URL` | Yes (oauth) | - | Public URL of this server, no trailing slash; redirect URI is `<base>/auth/callback`, resource URL is `<base>/mcp` |
+| `GITLAB_OAUTH_SCOPES` | No | `api` | Space-separated GitLab scopes required on every request (`read_api` for read-only) |
+| `GITLAB_OAUTH_JWT_KEY` | No | derived | JWT signing key, ≥ 32 random chars; set in production so registrations survive a secret rotation |
+| `FASTMCP_HOME` | No | platform data dir | Encrypted token store lives at `$FASTMCP_HOME/oauth-proxy/<fingerprint>/` |
 
 ### CLI Options
 
@@ -51,9 +68,14 @@ uvx mcp-gitlab --transport streamable-http --port 9000
 # SSE transport — deprecated by MCP 2026-07-28; still works, prints a warning
 uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
 
+# OAuth 2.1 mode (per-user GitLab sign-in; streamable-http only)
+uvx mcp-gitlab --auth oauth --transport streamable-http
+
 # CLI overrides for config
 uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
 ```
+
+`--auth {token,oauth}` selects the authentication mode (`token` default); `oauth` requires `--transport streamable-http`.
 
 ### MCP Client Configuration Example
 

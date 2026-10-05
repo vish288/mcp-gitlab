@@ -63,4 +63,24 @@ def test_not_found_error():
 
 def test_write_disabled():
     e = GitLabWriteDisabledError()
+    assert e.reason == "read_only"
     assert "read-only" in str(e).lower() or "read_only" in str(e).lower()
+
+
+def test_write_disabled_scope_reason():
+    e = GitLabWriteDisabledError("scope")
+    assert e.reason == "scope"
+    assert "api" in str(e) and "read_api" in str(e)
+
+
+def test_err_hint_for_scope_write_mentions_scope():
+    detail = json.loads(_err(GitLabWriteDisabledError("scope")))
+    assert "scope" in detail["hint"].lower()
+    assert "GITLAB_OAUTH_SCOPES" in detail["hint"]
+
+
+def test_err_auth_hint_still_mentions_gitlab_token():
+    """The auth hint stays mode-neutral but must still name GITLAB_TOKEN."""
+    detail = json.loads(_err(GitLabAuthError(401)))
+    assert "GITLAB_TOKEN" in detail["hint"]
+    assert "oauth" in detail["hint"].lower()
