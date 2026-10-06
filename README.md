@@ -9,7 +9,7 @@
 
 <!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
-**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API. It gives AI assistants **83 tools**, **7 resources**, and **6 prompts** to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, and code reviews. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API. It gives AI assistants **91 tools**, **7 resources**, and **6 prompts** to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, and code reviews. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
 
 Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
 
@@ -166,7 +166,7 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 - **Transports**: `stdio` (default) and `streamable-http` (recommended for remote). The `sse` (HTTP+SSE) transport still works, but the 2026-07-28 specification deprecates it. The server prints a warning when you use it.
 - **Capabilities**: tools, resources, and prompts. The server uses no roots, sampling, logging, elicitation, or resource subscriptions, so the 2026-07-28 deprecations do not affect it.
 
-## Tools (83)
+## Tools (91)
 
 | Category | Count | Tools |
 |----------|-------|-------|
@@ -175,9 +175,11 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 | **Groups** | 6 | list, get, share/unshare project, share/unshare group |
 | **Branches** | 3 | list, create, delete |
 | **Commits** | 4 | list, get (with diff), create, compare |
+| **Repository Files** | 4 | get file (at ref, line range), list tree, search code, blame |
 | **Merge Requests** | 15 | list, get, create, update, merge, merge-sequence, rebase, changes, approve, unapprove, get approvals, list pipelines, list commits, subscribe, unsubscribe |
 | **MR Notes** | 6 | list, add, delete, update, award emoji, remove emoji |
 | **MR Discussions** | 4 | list, create (inline + multi-line), reply, resolve |
+| **Draft Notes** | 4 | create (inline, auto-filled SHAs), list, publish all, delete |
 | **Pipelines** | 5 | list, get (with jobs), create, retry, cancel |
 | **Jobs** | 4 | retry, play, cancel, get log |
 | **Tags** | 4 | list, get, create, delete |
@@ -235,6 +237,14 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 | `gitlab_create_commit` | Create commit with file actions |
 | `gitlab_compare` | Compare branches/tags/commits |
 
+### Repository Files
+| Tool | Description |
+|------|-------------|
+| `gitlab_get_file` | Get decoded file content at a ref (optional line range), with metadata |
+| `gitlab_list_tree` | List repository tree entries (files and directories) at a ref |
+| `gitlab_search_code` | Search a project's code (scope=blobs); depends on the instance's search backend |
+| `gitlab_get_blame` | Get git blame for a file at a ref, optionally limited to a line range |
+
 ### Merge Requests
 | Tool | Description |
 |------|-------------|
@@ -271,6 +281,14 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 | `gitlab_create_mr_discussion` | Create discussion (inline + multi-line) |
 | `gitlab_reply_to_discussion` | Reply to discussion |
 | `gitlab_resolve_discussion` | Resolve/unresolve discussion |
+
+### Draft Notes
+| Tool | Description |
+|------|-------------|
+| `gitlab_create_draft_note` | Create an unpublished draft note (inline SHAs auto-filled from the MR's latest version) |
+| `gitlab_list_draft_notes` | List the current user's unpublished draft notes |
+| `gitlab_publish_draft_notes` | Publish ALL pending draft notes at once ("Submit review") |
+| `gitlab_delete_draft_note` | Delete a single unpublished draft note |
 
 ### Pipelines
 | Tool | Description |
@@ -428,8 +446,8 @@ GitLab enforces per-user rate limits (default: 2000 requests/minute for authenti
 
 | Operation | Minimum GitLab Role |
 |-----------|-------------------|
-| Read projects, MRs, pipelines, issues | Reporter |
-| Create branches, MRs, issues | Developer |
+| Read projects, MRs, pipelines, issues, files/tree/blame/code search | Reporter |
+| Create branches, MRs, issues, draft notes (create/publish/delete) | Developer |
 | Merge MRs, manage CI/CD variables | Maintainer |
 | Delete projects, manage approval rules | Maintainer/Owner |
 | Share projects/groups | Owner (or Admin) |

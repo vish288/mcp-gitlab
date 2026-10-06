@@ -51,4 +51,4 @@ async def test_2026_07_28_support(monkeypatch):
 
     async with Client(mcp, mode="2026-07-28") as client:
         tools = await client.list_tools()
-        assert len(tools) == 83
+        assert len(tools) == 91

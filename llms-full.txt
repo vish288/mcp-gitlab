@@ -1,6 +1,6 @@
 # mcp-gitlab
 
-> MCP server for the GitLab REST API. It gives AI assistants 83 tools, 7 resources, and 6 prompts to manage projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
+> MCP server for the GitLab REST API. It gives AI assistants 91 tools, 7 resources, and 6 prompts to manage projects, merge requests, pipelines, CI/CD, approvals, issues, and code reviews.
 
 MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted instances (CE/EE). No GitLab Duo or Premium required. Built with FastMCP, httpx, and Pydantic.
 
@@ -16,7 +16,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 
 ## Documentation
 
-- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 83 tools, 7 resources, 6 prompts
+- [README](https://github.com/vish288/mcp-gitlab#readme): canonical reference for setup, env vars, all 91 tools, 7 resources, 6 prompts
 - [PyPI](https://pypi.org/project/mcp-gitlab/): install via `pip install mcp-gitlab` or `uvx mcp-gitlab`
 - [GitHub](https://github.com/vish288/mcp-gitlab): source code, issue tracker, development setup
 - [MCP Registry](https://registry.modelcontextprotocol.io): discover and install MCP servers
@@ -104,7 +104,7 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | Delete projects, manage approval rules | Maintainer/Owner |
 | Share projects/groups | Owner (or Admin) |
 
-## Tools (83)
+## Tools (91)
 
 ### Projects (4)
 
@@ -158,6 +158,15 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | `gitlab_create_commit` | Create a commit with multiple file actions |
 | `gitlab_compare` | Compare two branches, tags, or commits |
 
+### Repository Files (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_get_file` | Get a file's decoded text content at a ref with metadata; refuses binary, truncates large content, supports a line range |
+| `gitlab_list_tree` | List repository tree entries (files and directories) at a ref, with pagination |
+| `gitlab_search_code` | Search a project's code (scope=blobs); results depend on the instance's search backend |
+| `gitlab_get_blame` | Get git blame for a file at a ref, optionally limited to a line range |
+
 ### Merge Requests (15)
 
 | Tool | Description |
@@ -197,6 +206,15 @@ uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx 
 | `gitlab_create_mr_discussion` | Create a discussion on a merge request (supports inline and multi-line comments) |
 | `gitlab_reply_to_discussion` | Reply to an existing discussion |
 | `gitlab_resolve_discussion` | Resolve or unresolve a discussion |
+
+### Draft Notes (4)
+
+| Tool | Description |
+|------|-------------|
+| `gitlab_create_draft_note` | Create an unpublished draft note; for inline comments the diff SHAs are auto-filled from the MR's latest version |
+| `gitlab_list_draft_notes` | List the current user's unpublished draft notes on a merge request |
+| `gitlab_publish_draft_notes` | Publish ALL pending draft notes at once, like "Submit review" |
+| `gitlab_delete_draft_note` | Delete a single unpublished draft note |
 
 ### Pipelines (5)
 
@@ -385,10 +403,11 @@ The server provides MCP prompts — reusable multi-tool workflow templates that 
 1. Fetch MR details — use `gitlab_get_mr` with project_id and mr_iid. Note the author, source/target branches, description, and labels.
 2. Check pipeline status — use `gitlab_get_pipeline` with the pipeline ID from step 1. If CI has not passed, flag it before proceeding.
 3. Get the diff — use `gitlab_mr_changes` to retrieve all changed files.
-4. Review each changed file — evaluate: correctness and logic errors, test coverage, security implications, performance, naming clarity and style consistency.
-5. Write inline comments — use `gitlab_create_mr_discussion` for each finding, anchored to file and line. Use Conventional Comments labels.
-6. Summarize — post an overall MR note via `gitlab_add_mr_note` with what the MR does well, blocking issues, and non-blocking suggestions.
-7. Verdict — approve if no blocking issues, otherwise request changes.
+4. Review each changed file — use `gitlab_get_file` at the MR head ref for full context, then evaluate: correctness and logic errors, test coverage, security implications, performance, naming clarity and style consistency.
+5. Draft inline comments — use `gitlab_create_draft_note` for each finding (pass new_path plus new_line/old_line; diff SHAs auto-fill). Use Conventional Comments labels.
+6. Summarize — add a body-only draft note via `gitlab_create_draft_note` with what the MR does well, blocking issues, and non-blocking suggestions.
+7. Confirm, then publish — show the pending drafts (`gitlab_list_draft_notes`) and, only after explicit confirmation, call `gitlab_publish_draft_notes` once to submit the whole review.
+8. Verdict — approve if no blocking issues, otherwise request changes.
 
 **Review priority:** Design > Functionality > Complexity > Tests > Naming > Comments > Style.
 
