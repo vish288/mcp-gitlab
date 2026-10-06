@@ -490,8 +490,9 @@ Run `uvx mcp-gitlab`, or add it to your MCP client configuration. See the instal
 
 ## Related MCP Servers
 
-- [mcp-atlassian-extended](https://github.com/vish288/mcp-atlassian-extended) — Jira + Confluence integration (23 tools, 15 resources, 5 prompts)
-- [mcp-coda](https://github.com/vish288/mcp-coda) — Coda.io integration (54 tools, 12 resources, 5 prompts)
+- [mcp-atlassian-extended](https://github.com/vish288/mcp-atlassian-extended) — Jira + Confluence integration (22 tools, 15 resources, 5 prompts)
+- [mcp-coda](https://github.com/vish288/mcp-coda) — Coda integration (53 tools, 12 resources, 5 prompts)
+- [mcp-argocd](https://github.com/vish288/mcp-argocd) — Argo CD integration (37 tools, 7 resources, 7 prompts)
 
 ## Development
 
