@@ -1,6 +1,6 @@
 [project]
 name = "mcp-gitlab"
-version = "0.12.2"
+version = "0.13.0"
 description = "GitLab MCP server for the MCP 2026-07-28 specification (MCP 2.0): manage projects, MRs, pipelines, CI/CD, approvals, and issues for AI assistants"
 readme = "README.md"
 license = {text = "MIT"}

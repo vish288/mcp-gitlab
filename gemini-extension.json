@@ -1,6 +1,6 @@
 {
   "name": "mcp-gitlab",
-  "version": "0.12.2",
+  "version": "0.13.0",
   "description": "GitLab MCP server for MCP 2026-07-28: projects, MRs, pipelines, CI/CD, approvals, issues",
   "mcpServers": {
     "mcp-gitlab": {

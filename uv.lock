@@ -969,7 +969,7 @@ wheels = [
 
 [[package]]
 name = "mcp-gitlab"
-version = "0.12.2"
+version = "0.13.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

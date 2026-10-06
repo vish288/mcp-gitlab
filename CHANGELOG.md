@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.0] - 2026-10-06
+
+### Features
+- feat(auth): opt-in OAuth 2.1 for the streamable-http transport (8d3a817)
+
+### Documentation
+- docs(resources): verify and correct shipped rules, guides and prompts (7224e0f)
+
+
 ## [0.12.2] - 2026-10-03
 
 ### Bug Fixes
