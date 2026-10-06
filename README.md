@@ -145,6 +145,8 @@ at `<base>/mcp`; it discovers the authorization server, runs the OAuth flow, and
 each tool call then uses that user's GitLab token. A `read_api`-only token can
 read but is refused writes with an actionable hint.
 
+Full guide, client setup and troubleshooting: [docs/oauth.md](docs/oauth.md).
+
 ## Compatibility
 
 | Client | Supported | Install Method |
