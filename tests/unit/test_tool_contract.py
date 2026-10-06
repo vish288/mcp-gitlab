@@ -651,6 +651,72 @@ ROWS = [
         {},
         {"body": "c"},
     ),
+    # Repository files
+    (
+        "gitlab_get_file",
+        {"project_id": "123", "file_path": "app.py", "ref": "main"},
+        "GET",
+        f"{P}/repository/files/app.py",
+        {"ref": "main"},
+        None,
+    ),
+    (
+        "gitlab_list_tree",
+        {"project_id": "123", "ref": "main"},
+        "GET",
+        f"{P}/repository/tree",
+        {"ref": "main", "per_page": "100", "page": "1"},
+        None,
+    ),
+    (
+        "gitlab_search_code",
+        {"project_id": "123", "search": "foo"},
+        "GET",
+        f"{P}/search",
+        {"scope": "blobs", "search": "foo", "per_page": "100", "page": "1"},
+        None,
+    ),
+    (
+        "gitlab_get_blame",
+        {"project_id": "123", "file_path": "app.py", "ref": "main"},
+        "GET",
+        f"{P}/repository/files/app.py/blame",
+        {"ref": "main"},
+        None,
+    ),
+    # Draft notes
+    (
+        "gitlab_create_draft_note",
+        {"project_id": "123", "mr_iid": 1, "body": "c"},
+        "POST",
+        f"{MR}/draft_notes",
+        {},
+        {"note": "c"},
+    ),
+    (
+        "gitlab_list_draft_notes",
+        {"project_id": "123", "mr_iid": 1},
+        "GET",
+        f"{MR}/draft_notes",
+        {},
+        None,
+    ),
+    (
+        "gitlab_publish_draft_notes",
+        {"project_id": "123", "mr_iid": 1},
+        "POST",
+        f"{MR}/draft_notes/bulk_publish",
+        {},
+        None,
+    ),
+    (
+        "gitlab_delete_draft_note",
+        {"project_id": "123", "mr_iid": 1, "draft_note_id": 5},
+        "DELETE",
+        f"{MR}/draft_notes/5",
+        {},
+        None,
+    ),
 ]
 
 # Keys _err sets for GitLabNotFoundError. gitlab_merge_mr_sequence adds merged_so_far on top.

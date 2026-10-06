@@ -1,6 +1,6 @@
 # mcp-gitlab — Agent Context
 
-MCP server exposing 83 tools, 7 resources, and 6 prompts over the GitLab REST API v4. Covers the
+MCP server exposing 91 tools, 7 resources, and 6 prompts over the GitLab REST API v4. Covers the
 full project lifecycle: code, reviews, CI/CD, releases, and issue tracking. Works against
 GitLab.com and self-hosted instances.
 
@@ -25,7 +25,7 @@ are client scenarios), so a conformance job cannot prove them.
 
 - **Entry point**: `src/mcp_gitlab/__init__.py` — click CLI, loads `.env` via python-dotenv, runs the FastMCP server
 - **Client**: `src/mcp_gitlab/client.py` — async httpx client with all GitLab API methods
-- **Tools**: `src/mcp_gitlab/servers/gitlab.py` — all 83 FastMCP tool registrations
+- **Tools**: `src/mcp_gitlab/servers/gitlab.py` — all 91 FastMCP tool registrations
 - **Resources**: `src/mcp_gitlab/servers/resources.py` — 7 MCP resources (4 `resource://rules/*`, 3 `resource://guides/*`), content in `src/mcp_gitlab/resources/*.md`
 - **Prompts**: `src/mcp_gitlab/servers/prompts.py` — 6 MCP prompts (multi-tool workflows)
 - **Helpers**: `src/mcp_gitlab/servers/_helpers.py` — cached file loader with path-traversal guard, plus GitLab URL parsers. Most tools accept a project ID, a path, *or* a full GitLab URL for `project_id`; MR and pipeline URLs also yield the iid/id
@@ -93,7 +93,7 @@ Every write tool MUST call `_check_write(ctx)` before any mutation.
 - Verbs: create, get, list, search, update, delete, merge, rebase, retry, play, cancel, award,
   remove, share, unshare, compare, add, reply, resolve, approve, unapprove, subscribe, unsubscribe
 
-## Tool Categories (83)
+## Tool Categories (91)
 
 | Category | Count | Operations |
 |---|---|---|
@@ -102,9 +102,11 @@ Every write tool MUST call `_check_write(ctx)` before any mutation.
 | Groups | 6 | list, get groups; share/unshare project with group; share/unshare group with group |
 | Branches | 3 | list, create, delete |
 | Commits | 4 | list, get, create, compare refs |
+| Repository Files | 4 | get file (at ref, line range; refuses binary), list tree, search code (blobs), blame |
 | Merge Requests | 15 | list, get, create, update, merge, merge sequence, rebase, changes/diffs, approve, unapprove, get approvals, list pipelines, list commits, subscribe, unsubscribe |
 | MR Notes | 6 | list, add, update, delete notes; award/remove emoji |
 | MR Discussions | 4 | list, create, reply, resolve |
+| Draft Notes | 4 | create (inline, SHAs auto-filled from the MR version), list, publish all, delete |
 | Pipelines | 5 | list, get, create, retry, cancel |
 | Jobs | 4 | retry, play, cancel, get job log |
 | Tags | 4 | list, get, create, delete |
@@ -118,6 +120,7 @@ get job IDs from `gitlab_get_pipeline(..., include_jobs=True)`.
 ## Common Workflows
 
 - **Code review**: `gitlab_list_mrs` → `gitlab_mr_changes` → `gitlab_list_mr_discussions` → `gitlab_add_mr_note` or `gitlab_create_mr_discussion` → `gitlab_resolve_discussion`
+- **Review with drafts**: `gitlab_mr_changes` → `gitlab_get_file` (read full context at the MR head) → `gitlab_create_draft_note` per finding → `gitlab_publish_draft_notes` once at the end ("Submit review")
 - **Pipeline debugging**: `gitlab_list_pipelines` → `gitlab_get_pipeline` (`include_jobs=True`) → `gitlab_get_job_log` → `gitlab_retry_job`
 - **Release**: `gitlab_list_commits` → `gitlab_compare` → `gitlab_create_tag` → `gitlab_create_release`
 - **Branch protection**: `gitlab_list_project_approval_rules` → `gitlab_create_project_approval_rule` → `gitlab_update_project_merge_settings`
@@ -206,7 +209,7 @@ complete; new entries appear in the right sections with parameters and annotatio
 
 ## Known Limitations
 
-- 83 tools in one server file, well past the 5-15 guideline. If you refactor it, split the tools by category.
+- 91 tools in one server file, well past the 5-15 guideline. If you refactor it, split the tools by category.
 - Errors come back as successful tool results carrying `{"error": ...}` (soft-error pattern);
   callers must inspect the JSON content rather than relying on protocol-level errors.
 - OAuth mode makes one `GET /oauth/token/info` call to GitLab per MCP request (no token-info cache).

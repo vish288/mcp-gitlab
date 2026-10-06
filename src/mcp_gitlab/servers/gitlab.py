@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import functools
 import json
 import logging
@@ -205,6 +206,49 @@ def _err(error: Exception) -> str:
 def _params(**kw: Any) -> dict[str, Any]:
     """Request params from tool arguments, with unset (None) ones dropped."""
     return {k: v for k, v in kw.items() if v is not None}
+
+
+def _text_position(
+    *,
+    base_sha: str | None,
+    head_sha: str | None,
+    start_sha: str | None,
+    new_path: str | None,
+    old_path: str | None,
+    new_line: int | None,
+    old_line: int | None,
+    line_range_start_line: int | None,
+    line_range_end_line: int | None,
+    line_range_type: str | None,
+) -> dict[str, Any] | None:
+    """Build a GitLab ``position`` hash for an inline diff comment.
+
+    Returns None unless all three diff SHAs and ``new_path`` are present, so a
+    body-only comment is left un-anchored. Shared by ``gitlab_create_mr_discussion``
+    and ``gitlab_create_draft_note`` so the two cannot drift.
+    """
+    if not (base_sha and head_sha and start_sha and new_path):
+        return None
+    position: dict[str, Any] = {
+        "base_sha": base_sha,
+        "start_sha": start_sha,
+        "head_sha": head_sha,
+        "position_type": "text",
+        "new_path": new_path,
+        "old_path": old_path or new_path,
+    }
+    if new_line is not None:
+        position["new_line"] = new_line
+    if old_line is not None:
+        position["old_line"] = old_line
+    if line_range_start_line is not None and line_range_end_line is not None:
+        range_type = line_range_type or "new"
+        line_key = "new_line" if range_type == "new" else "old_line"
+        position["line_range"] = {
+            "start": {"type": range_type, line_key: line_range_start_line},
+            "end": {"type": range_type, line_key: line_range_end_line},
+        }
+    return position
 
 
 def _variable_params(
@@ -1443,30 +1487,19 @@ async def gitlab_create_mr_discussion(
     """
     params: dict[str, Any] = {"body": body}
 
-    # Build position for inline comments
-    if base_sha and head_sha and start_sha and new_path:
-        position: dict[str, Any] = {
-            "base_sha": base_sha,
-            "start_sha": start_sha,
-            "head_sha": head_sha,
-            "position_type": "text",
-            "new_path": new_path,
-            "old_path": old_path or new_path,
-        }
-        if new_line is not None:
-            position["new_line"] = new_line
-        if old_line is not None:
-            position["old_line"] = old_line
-
-        # Multi-line range
-        if line_range_start_line is not None and line_range_end_line is not None:
-            range_type = line_range_type or "new"
-            line_key = "new_line" if range_type == "new" else "old_line"
-            position["line_range"] = {
-                "start": {"type": range_type, line_key: line_range_start_line},
-                "end": {"type": range_type, line_key: line_range_end_line},
-            }
-
+    position = _text_position(
+        base_sha=base_sha,
+        head_sha=head_sha,
+        start_sha=start_sha,
+        new_path=new_path,
+        old_path=old_path,
+        new_line=new_line,
+        old_line=old_line,
+        line_range_start_line=line_range_start_line,
+        line_range_end_line=line_range_end_line,
+        line_range_type=line_range_type,
+    )
+    if position is not None:
         params["position"] = position
 
     return _ok(
@@ -1521,6 +1554,352 @@ async def gitlab_resolve_discussion(
         {"resolved": resolved},
     )
     return _ok(data)
+
+
+# ════════════════════════════════════════════════════════════════════
+# Repository Files
+# ════════════════════════════════════════════════════════════════════
+
+# Decoded file content past this many characters is truncated with a marker;
+# agents rarely need more in one read and the full blob bloats the context.
+_MAX_FILE_CHARS = 100_000
+# A matching snippet from code search, trimmed to keep list responses compact.
+_SEARCH_DATA_CHARS = 500
+
+
+async def _resolve_ref(client: GitLabClient, enc: str, ref: str | None) -> str:
+    """Return *ref*, or the project's default branch when *ref* is None.
+
+    The files and blame endpoints require a ref, so an omitted one costs one
+    extra project lookup to discover the default branch.
+    """
+    if ref:
+        return ref
+    project = await client.get(f"/projects/{enc}")
+    return project.get("default_branch") or "HEAD"
+
+
+@mcp.tool(
+    tags={"gitlab", "files", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+@tool_result
+async def gitlab_get_file(
+    ctx: Context,
+    project_id: ProjectId,
+    file_path: Annotated[
+        str, Field(description="Path to the file in the repo, e.g. 'src/app.py'", min_length=1)
+    ],
+    ref: Annotated[
+        str | None,
+        Field(description="Branch, tag, or commit SHA (default: the project's default branch)"),
+    ] = None,
+    start_line: Annotated[
+        int | None, Field(description="First line to return (1-based, inclusive)", ge=1)
+    ] = None,
+    end_line: Annotated[
+        int | None, Field(description="Last line to return (1-based, inclusive)", ge=1)
+    ] = None,
+) -> str:
+    """Get a file's decoded text content at a ref, with metadata.
+
+    Returns file_path, ref, size, encoding, blob_id, last_commit_id, total_lines, and content.
+    Refuses binary files with an actionable error and truncates very large content with a marker.
+    """
+    client = _get_client(ctx)
+    enc = _enc(project_id)
+    ref = await _resolve_ref(client, enc, ref)
+    data = await client.get(
+        f"/projects/{enc}/repository/files/{quote(file_path, safe='')}", {"ref": ref}
+    )
+    raw = base64.b64decode(data.get("content") or "")
+    if b"\x00" in raw:
+        msg = (
+            f"{file_path!r} looks binary (contains null bytes); this tool returns text only. "
+            "Fetch binary blobs through the GitLab web UI or raw API instead."
+        )
+        raise GitLabError(msg)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        msg = (
+            f"{file_path!r} is not valid UTF-8 text ({e}); this tool returns text only. "
+            "Fetch binary blobs through the GitLab web UI or raw API instead."
+        )
+        raise GitLabError(msg) from e
+
+    lines = text.splitlines()
+    total_lines = len(lines)
+    if start_line is not None or end_line is not None:
+        lo = (start_line - 1) if start_line else 0
+        hi = end_line if end_line else total_lines
+        text = "\n".join(lines[lo:hi])
+
+    truncated = len(text) > _MAX_FILE_CHARS
+    if truncated:
+        text = text[:_MAX_FILE_CHARS] + f"\n\n...[truncated at {_MAX_FILE_CHARS} characters]..."
+
+    return _ok(
+        {
+            "file_path": data.get("file_path", file_path),
+            "ref": ref,
+            "size": data.get("size"),
+            "encoding": data.get("encoding"),
+            "blob_id": data.get("blob_id"),
+            "last_commit_id": data.get("last_commit_id"),
+            "total_lines": total_lines,
+            "start_line": start_line,
+            "end_line": end_line,
+            "truncated": truncated,
+            "content": text,
+        }
+    )
+
+
+@mcp.tool(
+    tags={"gitlab", "files", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+@tool_result
+async def gitlab_list_tree(
+    ctx: Context,
+    project_id: ProjectId,
+    path: Annotated[str | None, Field(description="Subpath to list (default: repo root)")] = None,
+    ref: Annotated[
+        str | None, Field(description="Branch, tag, or commit SHA (default: default branch)")
+    ] = None,
+    recursive: Annotated[bool, Field(description="Recurse into subdirectories")] = False,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
+) -> str:
+    """List repository tree entries (files and directories) at a ref.
+
+    Returns items with id, name, type ('blob' or 'tree'), path, and mode, plus pagination state.
+    """
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/repository/tree",
+        _params(path=path, ref=ref, recursive=recursive or None, per_page=100, page=page),
+    )
+    return _paginated(data, next_page)
+
+
+@mcp.tool(
+    tags={"gitlab", "files", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+@tool_result
+async def gitlab_search_code(
+    ctx: Context,
+    project_id: ProjectId,
+    search: Annotated[str, Field(description="Text to search for in file contents", min_length=1)],
+    ref: Annotated[
+        str | None,
+        Field(description="Ref to search; ignored unless the instance has Advanced Search"),
+    ] = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
+) -> str:
+    """Search a project's code (scope=blobs). Returns items with path, ref, startline, and data.
+
+    Results depend on the instance's search backend: without Advanced Search only the default
+    branch is searched and `ref` is ignored.
+    """
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/search",
+        _params(scope="blobs", search=search, ref=ref, per_page=100, page=page),
+    )
+    slim = [
+        {
+            "path": i.get("path") or i.get("filename"),
+            "ref": i.get("ref"),
+            "startline": i.get("startline"),
+            "data": (i.get("data") or "")[:_SEARCH_DATA_CHARS],
+        }
+        for i in data
+    ]
+    return _paginated(slim, next_page)
+
+
+@mcp.tool(
+    tags={"gitlab", "files", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+@tool_result
+async def gitlab_get_blame(
+    ctx: Context,
+    project_id: ProjectId,
+    file_path: Annotated[
+        str, Field(description="Path to the file in the repo, e.g. 'src/app.py'", min_length=1)
+    ],
+    ref: Annotated[
+        str | None,
+        Field(description="Branch, tag, or commit SHA (default: the project's default branch)"),
+    ] = None,
+    start_line: Annotated[
+        int | None, Field(description="First line of the blame range (1-based)", ge=1)
+    ] = None,
+    end_line: Annotated[
+        int | None, Field(description="Last line of the blame range (1-based)", ge=1)
+    ] = None,
+) -> str:
+    """Get git blame for a file at a ref, optionally limited to a line range.
+
+    Returns slim ranges: each has commit_id, author, date, message (first line), and lines.
+    """
+    client = _get_client(ctx)
+    enc = _enc(project_id)
+    ref = await _resolve_ref(client, enc, ref)
+    params: dict[str, Any] = {"ref": ref}
+    if start_line is not None:
+        params["range[start]"] = start_line
+    if end_line is not None:
+        params["range[end]"] = end_line
+    data = await client.get(
+        f"/projects/{enc}/repository/files/{quote(file_path, safe='')}/blame", params
+    )
+    slim = []
+    for entry in data:
+        commit = entry.get("commit") or {}
+        message = (commit.get("message") or "").splitlines()
+        slim.append(
+            {
+                "commit_id": commit.get("id"),
+                "author": commit.get("author_name"),
+                "date": commit.get("authored_date") or commit.get("committed_date"),
+                "message": message[0] if message else "",
+                "lines": entry.get("lines"),
+            }
+        )
+    return _ok({"ref": ref, "ranges": slim, "count": len(slim)})
+
+
+# ════════════════════════════════════════════════════════════════════
+# Draft Notes (review)
+# ════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool(
+    tags={"gitlab", "review", "write"},
+    annotations={"readOnlyHint": False, "openWorldHint": True},
+)
+@tool_result(write=True)
+async def gitlab_create_draft_note(
+    ctx: Context,
+    project_id: ProjectId,
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+    body: Annotated[str, Field(description="Draft note body (markdown)", min_length=1)],
+    base_sha: Annotated[str | None, Field(description="Base commit SHA (from diff_refs)")] = None,
+    head_sha: Annotated[str | None, Field(description="Head commit SHA (from diff_refs)")] = None,
+    start_sha: Annotated[str | None, Field(description="Start commit SHA (from diff_refs)")] = None,
+    new_path: Annotated[str | None, Field(description="File path for inline comment")] = None,
+    old_path: Annotated[str | None, Field(description="Old file path (for renames)")] = None,
+    new_line: Annotated[int | None, Field(description="Line number in new file")] = None,
+    old_line: Annotated[int | None, Field(description="Line number in old file")] = None,
+    line_range_start_line: Annotated[
+        int | None, Field(description="Multi-line range start")
+    ] = None,
+    line_range_end_line: Annotated[int | None, Field(description="Multi-line range end")] = None,
+    line_range_type: Annotated[
+        str | None, Field(description="'new' or 'old' for line range")
+    ] = None,
+) -> str:
+    """Create an unpublished draft note on a merge request ("Submit review" style).
+
+    Returns the new draft note. For an inline comment give new_path plus new_line/old_line; the
+    diff SHAs are auto-filled from the MR's latest version if you omit them.
+    """
+    client = _get_client(ctx)
+    enc = _enc(project_id)
+    # Auto-fill the diff SHAs so callers can anchor by path+line without first
+    # fetching diff_refs themselves.
+    if (
+        new_path
+        and (new_line is not None or old_line is not None)
+        and not (base_sha and head_sha and start_sha)
+    ):
+        versions = await client.get(f"/projects/{enc}/merge_requests/{mr_iid}/versions")
+        if versions:
+            latest = versions[0]
+            base_sha = base_sha or latest.get("base_commit_sha")
+            head_sha = head_sha or latest.get("head_commit_sha")
+            start_sha = start_sha or latest.get("start_commit_sha")
+
+    params: dict[str, Any] = {"note": body}
+    position = _text_position(
+        base_sha=base_sha,
+        head_sha=head_sha,
+        start_sha=start_sha,
+        new_path=new_path,
+        old_path=old_path,
+        new_line=new_line,
+        old_line=old_line,
+        line_range_start_line=line_range_start_line,
+        line_range_end_line=line_range_end_line,
+        line_range_type=line_range_type,
+    )
+    if position is not None:
+        params["position"] = position
+
+    return _ok(await client.post(f"/projects/{enc}/merge_requests/{mr_iid}/draft_notes", params))
+
+
+@mcp.tool(
+    tags={"gitlab", "review", "read"},
+    annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+)
+@tool_result
+async def gitlab_list_draft_notes(
+    ctx: Context,
+    project_id: ProjectId,
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """List the current user's unpublished draft notes on a merge request.
+
+    Returns each draft's id, note body, and position (if inline).
+    """
+    data = await _get_client(ctx).get(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/draft_notes"
+    )
+    return _paginated(data or [])
+
+
+@mcp.tool(
+    tags={"gitlab", "review", "write"},
+    annotations={"readOnlyHint": False, "idempotentHint": True, "openWorldHint": True},
+)
+@tool_result(write=True)
+async def gitlab_publish_draft_notes(
+    ctx: Context,
+    project_id: ProjectId,
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+) -> str:
+    """Publish ALL pending draft notes on a merge request at once, like clicking "Submit review".
+
+    Returns a {status: published} confirmation. Idempotent: a no-op when no drafts remain.
+    """
+    await _get_client(ctx).post(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/draft_notes/bulk_publish"
+    )
+    return _ok({"status": "published", "mr_iid": mr_iid})
+
+
+@mcp.tool(
+    tags={"gitlab", "review", "write"},
+    annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+)
+@tool_result(write=True)
+async def gitlab_delete_draft_note(
+    ctx: Context,
+    project_id: ProjectId,
+    mr_iid: Annotated[int, Field(description="Merge request IID")],
+    draft_note_id: Annotated[int, Field(description="Draft note ID to delete")],
+) -> str:
+    """Delete a single unpublished draft note.
+
+    Returns a {status: deleted, draft_note_id} confirmation.
+    """
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/draft_notes/{draft_note_id}"
+    )
+    return _ok({"status": "deleted", "draft_note_id": draft_note_id})
 
 
 # ════════════════════════════════════════════════════════════════════

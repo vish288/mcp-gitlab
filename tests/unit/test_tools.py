@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 
@@ -2421,3 +2422,355 @@ class TestDocstringContracts:
             params = tools[name].input_schema["properties"]
             assert "milestone" not in desc or any("milestone" in p for p in params)
             assert "assignee" not in desc or any("assignee" in p for p in params)
+
+
+# ═══════════════════════════════════════════════════════
+# Repository Files
+# ═══════════════════════════════════════════════════════
+
+
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode()).decode()
+
+
+class TestGetFile:
+    async def test_happy_path(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/app.py").mock(
+            return_value=Response(
+                200,
+                json={
+                    "file_path": "app.py",
+                    "size": 11,
+                    "encoding": "base64",
+                    "blob_id": "b1",
+                    "last_commit_id": "c1",
+                    "content": _b64("l1\nl2\nl3"),
+                },
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_get_file", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+        )
+        parsed = _parse(result)
+        assert parsed["content"] == "l1\nl2\nl3"
+        assert parsed["total_lines"] == 3
+        assert parsed["ref"] == "main"
+        assert parsed["blob_id"] == "b1"
+        assert parsed["truncated"] is False
+
+    async def test_default_branch_resolved_when_ref_omitted(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123").mock(
+            return_value=Response(200, json={"id": 123, "default_branch": "develop"})
+        )
+        files = router.get("/projects/123/repository/files/app.py").mock(
+            return_value=Response(200, json={"content": _b64("x"), "encoding": "base64"})
+        )
+        result = await client.call_tool(
+            "gitlab_get_file", {"project_id": "123", "file_path": "app.py"}
+        )
+        parsed = _parse(result)
+        assert parsed["ref"] == "develop"
+        assert dict(files.calls.last.request.url.params)["ref"] == "develop"
+
+    async def test_url_encodes_file_path(self, tool_client):
+        client, router = tool_client
+        route = router.get(url__regex=r".*/repository/files/.*").mock(
+            return_value=Response(200, json={"content": _b64("x"), "encoding": "base64"})
+        )
+        await client.call_tool(
+            "gitlab_get_file",
+            {"project_id": "123", "file_path": "src/app.py", "ref": "main"},
+        )
+        assert "files/src%2Fapp.py" in str(route.calls.last.request.url)
+
+    async def test_line_range_slices(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/app.py").mock(
+            return_value=Response(
+                200, json={"content": _b64("l1\nl2\nl3\nl4\nl5"), "encoding": "base64"}
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_get_file",
+            {
+                "project_id": "123",
+                "file_path": "app.py",
+                "ref": "main",
+                "start_line": 2,
+                "end_line": 4,
+            },
+        )
+        parsed = _parse(result)
+        assert parsed["content"] == "l2\nl3\nl4"
+        assert parsed["total_lines"] == 5
+
+    async def test_truncation_marks_large_content(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/app.py").mock(
+            return_value=Response(200, json={"content": _b64("a" * 100_050), "encoding": "base64"})
+        )
+        result = await client.call_tool(
+            "gitlab_get_file", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+        )
+        parsed = _parse(result)
+        assert parsed["truncated"] is True
+        assert "truncated at" in parsed["content"]
+
+    async def test_binary_refused(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/app.py").mock(
+            return_value=Response(
+                200,
+                json={"content": base64.b64encode(b"\x00\x01\x02").decode(), "encoding": "base64"},
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_get_file", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+        )
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert "binary" in parsed["error"].lower()
+
+    async def test_invalid_utf8_refused(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/app.py").mock(
+            return_value=Response(
+                200,
+                json={"content": base64.b64encode(b"\xff\xfe").decode(), "encoding": "base64"},
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_get_file", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+        )
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert "utf-8" in parsed["error"].lower()
+
+    async def test_not_found_hint(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/missing.py").mock(
+            return_value=Response(404, json={"message": "404 File Not Found"})
+        )
+        result = await client.call_tool(
+            "gitlab_get_file", {"project_id": "123", "file_path": "missing.py", "ref": "main"}
+        )
+        parsed = _parse(result)
+        assert parsed["status_code"] == 404
+        assert "Verify" in parsed["hint"]
+
+
+class TestListTree:
+    async def test_happy_path(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/tree").mock(
+            return_value=Response(
+                200,
+                json=[{"id": "a", "name": "src", "type": "tree", "path": "src", "mode": "040000"}],
+            )
+        )
+        result = await client.call_tool("gitlab_list_tree", {"project_id": "123", "ref": "main"})
+        parsed = _parse(result)
+        assert parsed["count"] == 1
+        assert parsed["items"][0]["type"] == "tree"
+        assert parsed["has_more"] is False
+
+    async def test_pagination_and_recursive(self, tool_client):
+        client, router = tool_client
+        route = router.get("/projects/123/repository/tree").mock(
+            return_value=Response(200, json=[{"path": "a"}], headers={"X-Next-Page": "2"})
+        )
+        result = await client.call_tool(
+            "gitlab_list_tree", {"project_id": "123", "ref": "main", "recursive": True}
+        )
+        parsed = _parse(result)
+        assert parsed["has_more"] is True
+        assert parsed["next_page"] == 2
+        assert dict(route.calls.last.request.url.params)["recursive"] == "true"
+
+
+class TestSearchCode:
+    async def test_slim_shape_and_trimmed_data(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/search").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "path": "a.py",
+                        "ref": "main",
+                        "startline": 10,
+                        "data": "x" * 1000,
+                        "extra": "dropped",
+                    }
+                ],
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_search_code", {"project_id": "123", "search": "foo"}
+        )
+        parsed = _parse(result)
+        item = parsed["items"][0]
+        assert item == {"path": "a.py", "ref": "main", "startline": 10, "data": "x" * 500}
+
+
+class TestGetBlame:
+    async def test_slim_ranges(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/repository/files/app.py/blame").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "commit": {
+                            "id": "deadbeef",
+                            "author_name": "Dev",
+                            "authored_date": "2026-01-01",
+                            "message": "fix: thing\n\nbody",
+                        },
+                        "lines": ["line one"],
+                    }
+                ],
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_get_blame", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+        )
+        parsed = _parse(result)
+        r = parsed["ranges"][0]
+        assert r["commit_id"] == "deadbeef"
+        assert r["author"] == "Dev"
+        assert r["message"] == "fix: thing"
+        assert r["lines"] == ["line one"]
+
+    async def test_range_params_forwarded(self, tool_client):
+        client, router = tool_client
+        route = router.get("/projects/123/repository/files/app.py/blame").mock(
+            return_value=Response(200, json=[])
+        )
+        await client.call_tool(
+            "gitlab_get_blame",
+            {
+                "project_id": "123",
+                "file_path": "app.py",
+                "ref": "main",
+                "start_line": 5,
+                "end_line": 20,
+            },
+        )
+        params = dict(route.calls.last.request.url.params)
+        assert params["range[start]"] == "5"
+        assert params["range[end]"] == "20"
+
+
+# ═══════════════════════════════════════════════════════
+# Draft Notes
+# ═══════════════════════════════════════════════════════
+
+
+class TestDraftNotes:
+    async def test_create_body_only(self, tool_client):
+        client, router = tool_client
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 7, "note": "looks good"})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "looks good"},
+        )
+        parsed = _parse(result)
+        assert parsed["id"] == 7
+        assert json.loads(route.calls.last.request.content) == {"note": "looks good"}
+
+    async def test_create_inline_autofills_shas_from_versions(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "base_commit_sha": "base1",
+                        "head_commit_sha": "head1",
+                        "start_commit_sha": "start1",
+                    }
+                ],
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 42},
+        )
+        parsed = _parse(result)
+        assert parsed["id"] == 8
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos["base_sha"] == "base1"
+        assert pos["head_sha"] == "head1"
+        assert pos["start_sha"] == "start1"
+        assert pos["new_path"] == "app.py"
+        assert pos["new_line"] == 42
+
+    async def test_create_blocked_readonly(self, readonly_client):
+        client, _router = readonly_client
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "x"},
+        )
+        parsed = _parse(result)
+        assert "read-only" in parsed["hint"].lower()
+
+    async def test_list(self, tool_client):
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(200, json=[{"id": 1, "note": "a"}, {"id": 2, "note": "b"}])
+        )
+        result = await client.call_tool(
+            "gitlab_list_draft_notes", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert parsed["count"] == 2
+
+    async def test_publish_all(self, tool_client):
+        client, router = tool_client
+        route = router.post("/projects/123/merge_requests/1/draft_notes/bulk_publish").mock(
+            return_value=Response(204)
+        )
+        result = await client.call_tool(
+            "gitlab_publish_draft_notes", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert parsed["status"] == "published"
+        assert route.called
+
+    async def test_publish_blocked_readonly(self, readonly_client):
+        client, _router = readonly_client
+        result = await client.call_tool(
+            "gitlab_publish_draft_notes", {"project_id": "123", "mr_iid": 1}
+        )
+        parsed = _parse(result)
+        assert "read-only" in parsed["hint"].lower()
+
+    async def test_delete(self, tool_client):
+        client, router = tool_client
+        router.delete("/projects/123/merge_requests/1/draft_notes/5").mock(
+            return_value=Response(204)
+        )
+        result = await client.call_tool(
+            "gitlab_delete_draft_note",
+            {"project_id": "123", "mr_iid": 1, "draft_note_id": 5},
+        )
+        parsed = _parse(result)
+        assert parsed["status"] == "deleted"
+        assert parsed["draft_note_id"] == 5
+
+    async def test_delete_blocked_readonly(self, readonly_client):
+        client, _router = readonly_client
+        result = await client.call_tool(
+            "gitlab_delete_draft_note",
+            {"project_id": "123", "mr_iid": 1, "draft_note_id": 5},
+        )
+        parsed = _parse(result)
+        assert "read-only" in parsed["hint"].lower()
