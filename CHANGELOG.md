@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.15.0] - 2026-10-06
+
+### Features
+- feat(auth): local OAuth sign-in for stdio (mcp-gitlab auth login) (66bb53d)
+- feat: repository file and draft-note review tools (d6b5f00)
+
+### Documentation
+- docs: OAuth 2.1 usage guide (2db55b5)
+- docs: list mcp-argocd in related servers and refresh counts (ef96516)
+
+
 ## [0.14.0] - 2026-10-06
 
 
