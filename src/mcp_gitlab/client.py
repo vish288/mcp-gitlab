@@ -56,8 +56,16 @@ class GitLabClient:
         self.config = config or GitLabConfig.from_env()
         self.config.validate()
         if auth_headers is None:
-            auth_headers = {"PRIVATE-TOKEN": self.config.token} if self.config.token else {}
+            if self.config.credentials is not None:
+                auth_headers = {}  # filled per request from the stored credentials
+            elif self.config.token:
+                auth_headers = {"PRIVATE-TOKEN": self.config.token}
+            else:
+                auth_headers = {}
         self._auth_headers = auth_headers
+        # Stored OAuth credentials (local sign-in) that refresh themselves; None
+        # for PAT and hosted-oauth modes, where with_bearer/_auth_headers apply.
+        self._credentials = self.config.credentials
         self._client = httpx.AsyncClient(
             base_url=self.config.api_url,
             headers={"Content-Type": "application/json"},
@@ -87,8 +95,29 @@ class GitLabClient:
 
     async def close(self) -> None:
         await self._client.aclose()
+        if self._credentials is not None:
+            await self._credentials.aclose()
 
     # ── HTTP helpers ──────────────────────────────────────────────
+
+    async def _headers(self) -> dict[str, str]:
+        """The auth headers for one request. Stored OAuth credentials refresh
+        proactively (within the margin) and yield a fresh Bearer; everything
+        else uses the static headers set at construction (or by with_bearer)."""
+        if self._credentials is None:
+            return self._auth_headers
+        return {"Authorization": f"Bearer {await self._credentials.bearer()}"}
+
+    async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """One send path for every verb, so refresh-on-401 cannot drift between
+        ``_request`` and ``get_paged``. On a 401 with stored credentials it
+        refreshes once (covering revocation or clock skew) and retries; the
+        refresh raises ``GitLabAuthError`` on failure rather than looping."""
+        resp = await self._client.request(method, path, headers=await self._headers(), **kwargs)
+        if resp.status_code == 401 and self._credentials is not None:
+            await self._credentials.refresh()
+            resp = await self._client.request(method, path, headers=await self._headers(), **kwargs)
+        return resp
 
     @staticmethod
     def _encode_id(project_id: str | int) -> str:
@@ -116,11 +145,11 @@ class GitLabClient:
         raw: bool = False,
     ) -> Any:
         """Make an API request and return parsed JSON (or raw text if raw=True)."""
-        kwargs: dict[str, Any] = {"params": params, "headers": self._auth_headers}
+        kwargs: dict[str, Any] = {"params": params}
         if json_data is not None:
             kwargs["json"] = json_data
 
-        resp = await self._client.request(method, path, **kwargs)
+        resp = await self._send(method, path, **kwargs)
 
         self._raise_for_status(resp)
         return self._parse_body(resp, raw=raw)
@@ -176,7 +205,7 @@ class GitLabClient:
         every list tool silently truncated with no way to ask for the rest.
         ``next_page`` is None on the last page.
         """
-        resp = await self._client.request("GET", path, params=params, headers=self._auth_headers)
+        resp = await self._send("GET", path, params=params)
         self._raise_for_status(resp)
 
         items = self._parse_body(resp)

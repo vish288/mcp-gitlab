@@ -80,7 +80,7 @@ uv pip install mcp-gitlab
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
-| `GITLAB_TOKEN` | **Yes** (token mode) | - | Authentication token (see below) |
+| `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (see below) |
 | `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
@@ -102,6 +102,57 @@ These accept any of the following token types:
 | Personal access token | `glpat-xxx` | User-level access with `api` scope |
 | OAuth2 token | `oauth-xxx` | OAuth app integrations |
 | CI job token | `$CI_JOB_TOKEN` | GitLab CI pipeline access |
+
+## Sign in without a token
+
+Use this when you run the server for yourself over `stdio` and have no personal
+access token. `mcp-gitlab auth login` signs you in to GitLab as a public OAuth
+client and stores the tokens locally. The server then reads them at startup and
+refreshes them on its own. This is not OAuth mode; the server stays in token
+mode and nothing on the MCP wire changes.
+
+Three commands:
+
+```bash
+mcp-gitlab auth login     # device flow by default; add --web for the browser flow
+mcp-gitlab auth status    # show the stored account, scopes, and token freshness
+mcp-gitlab auth logout    # revoke the token at GitLab and delete the local copy
+```
+
+`auth login` prints a code and a URL. Open the URL, enter the code, and approve.
+The server then works with `GITLAB_URL` set and no token.
+
+### Client ID
+
+Each sign-in needs an OAuth application ID. Resolution order: `--client-id`,
+then `GITLAB_OAUTH_CLIENT_ID`, then a built-in default for `https://gitlab.com`.
+
+The gitlab.com default is not registered yet. Until it is, set
+`GITLAB_OAUTH_CLIENT_ID` or pass `--client-id` for gitlab.com too.
+
+### Register an app (self-managed, or gitlab.com until the default ships)
+
+Create an application under **User Settings → Applications → Add new
+application** with these settings:
+
+| Field | Value |
+|-------|-------|
+| Name | `mcp-gitlab` |
+| Redirect URI | `http://127.0.0.1/callback` (loopback IP, no port) |
+| Confidential | unchecked (public client) |
+| Scopes | `api`, `read_api` |
+
+Use `127.0.0.1`, not `localhost`. The device flow needs GitLab 17.9 or later; on
+older instances use `mcp-gitlab auth login --web`.
+
+### Storage and precedence
+
+Credentials live in `~/.config/mcp-gitlab/credentials.json`, one entry per
+GitLab URL, mode 0600. An environment token always wins: if `GITLAB_TOKEN` is
+set, the server uses it and ignores the stored credentials.
+
+Pass `--scopes read_api` for a read-only session; the server then blocks write
+tools before any API call.
 
 ## OAuth 2.1 (remote deployments)
 
@@ -126,7 +177,7 @@ Application ID and Secret.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | - | GitLab instance; also the upstream authorization server |
-| `GITLAB_OAUTH_CLIENT_ID` | **Yes** | - | Application ID of the GitLab OAuth app |
+| `GITLAB_OAUTH_CLIENT_ID` | **Yes** | - | Application ID (oauth mode, or local sign-in) |
 | `GITLAB_OAUTH_CLIENT_SECRET` | **Yes** | - | Its secret |
 | `GITLAB_OAUTH_BASE_URL` | **Yes** | - | Public URL of this server, no trailing slash (e.g. `https://mcp.example.com`). Resource URL is `<base>/mcp` |
 | `GITLAB_OAUTH_SCOPES` | No | `api` | Space-separated GitLab scopes required on every request. Use `read_api` for a read-only deployment |
@@ -436,7 +487,7 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 - **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
-- **No credential storage**: The server does not persist tokens. The server reads credentials from environment variables at startup.
+- **Credential storage**: The server reads `GITLAB_TOKEN` from the environment and never writes it. `mcp-gitlab auth login` stores OAuth tokens in `~/.config/mcp-gitlab/credentials.json` (mode 0600) and refreshes them in place.
 
 ## Rate Limits & Permissions
 
@@ -469,6 +520,9 @@ uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
 # OAuth 2.1 mode (per-user GitLab sign-in; streamable-http only) — see "OAuth 2.1" above
 uvx mcp-gitlab --auth oauth --transport streamable-http
 
+# Local sign-in for stdio without a token — see "Sign in without a token" above
+mcp-gitlab auth login|status|logout
+
 # CLI overrides for config
 uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
 ```
@@ -498,7 +552,7 @@ Yes. Set `GITLAB_READ_ONLY=true` to disable every create, update, delete, and me
 
 ### What token scopes does it need?
 
-Use a token with the `api` scope for full access. Use the `read_api` scope for read-only deployments. The server reads the token from the environment and never stores it.
+Use a token with the `api` scope for full access. Use the `read_api` scope for read-only deployments. The server reads a `GITLAB_TOKEN` from the environment and never writes it; tokens from `mcp-gitlab auth login` are stored in `~/.config/mcp-gitlab/credentials.json`.
 
 ### Which AI assistants work with it?
 

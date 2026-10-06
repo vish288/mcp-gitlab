@@ -32,13 +32,25 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | Yes | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
-| `GITLAB_TOKEN` | Yes (token mode) | - | Authentication token (`glpat-xxx` personal access token, OAuth2 token, or CI job token) |
+| `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (`glpat-xxx` personal access token, OAuth2 token, or CI job token) |
 | `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
 | `GITLAB_AUTH` | No | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy to GitLab; `streamable-http` only) |
 
 The server checks the token environment variables in this order: `GITLAB_TOKEN`, `GITLAB_PAT`, `GITLAB_PERSONAL_ACCESS_TOKEN`, `GITLAB_API_TOKEN`. The first match wins.
+
+### Sign in without a token
+
+For a single user on `stdio` with no personal access token, `mcp-gitlab auth login` signs in to GitLab as a public OAuth client and stores the tokens locally. The server reads them at startup and refreshes them on its own; this is not OAuth mode and nothing on the MCP wire changes.
+
+```bash
+mcp-gitlab auth login     # device flow by default; add --web for the browser flow
+mcp-gitlab auth status    # show the stored account, scopes, and token freshness
+mcp-gitlab auth logout    # revoke the token at GitLab and delete the local copy
+```
+
+Each sign-in needs an OAuth application ID via `--client-id` or `GITLAB_OAUTH_CLIENT_ID`. Register a non-confidential app with redirect URI `http://127.0.0.1/callback` and scopes `api`, `read_api`. Credentials live in `~/.config/mcp-gitlab/credentials.json` (mode 0600), one entry per GitLab URL. An environment token always wins over stored credentials.
 
 ### OAuth 2.1 (remote deployments)
 

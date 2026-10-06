@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -21,6 +22,9 @@ class GitLabConfig:
     oauth_base_url: str = ""  # GITLAB_OAUTH_BASE_URL, trailing slash stripped
     oauth_scopes: str = "api"  # GITLAB_OAUTH_SCOPES, space-separated
     oauth_jwt_key: str = ""  # GITLAB_OAUTH_JWT_KEY, else derived from the secret
+    # LocalCredentials when the token came from `mcp-gitlab auth login`. Not read
+    # by from_env() (that must not touch the filesystem); lifespan sets it.
+    credentials: Any = None
 
     @classmethod
     def from_env(cls) -> GitLabConfig:
@@ -65,6 +69,12 @@ class GitLabConfig:
     def scopes(self) -> list[str]:
         return self.oauth_scopes.split()
 
+    @property
+    def token_scopes(self) -> list[str] | None:
+        """Scopes of stored OAuth credentials, or None when not signed in
+        locally. ``_check_write`` enforces ``api`` against these."""
+        return self.credentials.scopes if self.credentials is not None else None
+
     def validate(self) -> None:
         if not self.url:
             msg = "GITLAB_URL environment variable is required"
@@ -86,9 +96,9 @@ class GitLabConfig:
                 msg = f"OAuth mode requires: {', '.join(missing)}"
                 raise ValueError(msg)
             return  # a GitLab PAT is not used in oauth mode
-        if not self.token:
+        if not self.token and self.credentials is None:
             msg = (
                 "GitLab token is required. Set one of: GITLAB_TOKEN, GITLAB_PAT, "
-                "GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN"
+                "GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_API_TOKEN, or run: mcp-gitlab auth login"
             )
             raise ValueError(msg)

@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
+import respx
 
 from mcp_gitlab.client import GitLabClient
+from mcp_gitlab.config import GitLabConfig
 from mcp_gitlab.exceptions import GitLabApiError, GitLabAuthError, GitLabNotFoundError
+from mcp_gitlab.local_auth import CredentialStore
+
+TEST_URL = "https://gitlab.example.com"
+
+
+def _rotated_token(access="at-2", refresh="rt-2"):
+    return httpx.Response(
+        200,
+        json={
+            "access_token": access,
+            "refresh_token": refresh,
+            "expires_in": 7200,
+            "scope": "api",
+            "created_at": int(time.time()),
+        },
+    )
 
 
 class TestEncodeId:
@@ -266,3 +286,74 @@ class TestAuthHeaders:
         nxt = mock_api.get("/projects/2").mock(return_value=httpx.Response(200, json={"id": 2}))
         await client.get("/projects/2")
         assert "cookie" not in nxt.calls.last.request.headers  # nothing replayed
+
+
+class TestLocalCredentials:
+    """R5/R6: stored OAuth credentials send Bearer and refresh on 401."""
+
+    def _creds(self, tmp_path, *, expires_at):
+        store = CredentialStore(tmp_path / "credentials.json")
+        store.save(
+            TEST_URL,
+            {
+                "client_id": "cid",
+                "access_token": "at",
+                "refresh_token": "rt",
+                "expires_at": expires_at,
+                "scopes": ["api"],
+            },
+        )
+        return store.load(TEST_URL)
+
+    async def test_credentials_use_bearer_header(self, tmp_path):
+        creds = self._creds(tmp_path, expires_at=9999999999)
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="", credentials=creds))
+        with respx.mock(base_url=TEST_URL, assert_all_called=False) as router:
+            route = router.get("/api/v4/projects/1").mock(
+                return_value=httpx.Response(200, json={"id": 1})
+            )
+            await gl.get("/projects/1")
+        req = route.calls.last.request
+        assert req.headers["Authorization"] == "Bearer at"
+        assert "PRIVATE-TOKEN" not in req.headers
+        await gl.close()
+
+    async def test_401_triggers_refresh_and_retry(self, tmp_path):
+        creds = self._creds(tmp_path, expires_at=9999999999)  # fresh: no proactive refresh
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="", credentials=creds))
+        with respx.mock(base_url=TEST_URL, assert_all_called=False) as router:
+            get = router.get("/api/v4/projects/1").mock(
+                side_effect=[httpx.Response(401), httpx.Response(200, json={"id": 1})]
+            )
+            router.post("/oauth/token").mock(return_value=_rotated_token())
+            result = await gl.get("/projects/1")
+        assert result["id"] == 1
+        assert get.call_count == 2
+        assert get.calls.last.request.headers["Authorization"] == "Bearer at-2"
+        await gl.close()
+
+    async def test_401_refresh_failure_raises_auth_error_once(self, tmp_path):
+        creds = self._creds(tmp_path, expires_at=9999999999)
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="", credentials=creds))
+        with respx.mock(base_url=TEST_URL, assert_all_called=False) as router:
+            get = router.get("/api/v4/projects/1").mock(return_value=httpx.Response(401))
+            router.post("/oauth/token").mock(
+                return_value=httpx.Response(400, json={"error": "invalid_grant"})
+            )
+            with pytest.raises(GitLabAuthError):
+                await gl.get("/projects/1")
+        assert get.call_count == 1  # no infinite retry: refresh failure stops it
+        await gl.close()
+
+    async def test_get_paged_also_refreshes(self, tmp_path):
+        creds = self._creds(tmp_path, expires_at=9999999999)
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="", credentials=creds))
+        with respx.mock(base_url=TEST_URL, assert_all_called=False) as router:
+            get = router.get("/api/v4/projects/1/issues").mock(
+                side_effect=[httpx.Response(401), httpx.Response(200, json=[{"id": 9}])]
+            )
+            router.post("/oauth/token").mock(return_value=_rotated_token())
+            items, _ = await gl.get_paged("/projects/1/issues")
+        assert items == [{"id": 9}]
+        assert get.call_count == 2
+        await gl.close()

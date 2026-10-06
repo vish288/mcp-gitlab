@@ -2774,3 +2774,146 @@ class TestDraftNotes:
         )
         parsed = _parse(result)
         assert "read-only" in parsed["hint"].lower()
+
+
+# ═══════════════════════════════════════════════════════
+# Local sign-in: stored-credential scope enforcement + lifespan precedence
+# ═══════════════════════════════════════════════════════
+
+from contextlib import asynccontextmanager  # noqa: E402
+
+import respx  # noqa: E402
+from fastmcp import Client  # noqa: E402
+
+from mcp_gitlab.client import GitLabClient  # noqa: E402
+from mcp_gitlab.config import GitLabConfig  # noqa: E402
+from mcp_gitlab.local_auth import CredentialStore  # noqa: E402
+from mcp_gitlab.servers.gitlab import lifespan, mcp  # noqa: E402
+
+_TEST_URL = "https://gitlab.example.com"
+_API_BASE = f"{_TEST_URL}/api/v4"
+
+
+class _StubCreds:
+    def __init__(self, scopes):
+        self.scopes = scopes
+        self.access_token = "at"
+
+    async def bearer(self):
+        return self.access_token
+
+    async def aclose(self):
+        pass
+
+
+@asynccontextmanager
+async def _creds_tool_client(scopes):
+    creds = _StubCreds(scopes)
+    config = GitLabConfig(url=_TEST_URL, token="", credentials=creds)
+    gl = GitLabClient(config)
+
+    @asynccontextmanager
+    async def mock_lifespan(server):
+        try:
+            yield {"client": gl, "config": config}
+        finally:
+            await gl.close()
+
+    original = mcp._lifespan
+    mcp._lifespan = mock_lifespan
+    try:
+        with respx.mock(base_url=_API_BASE) as router:
+            async with Client(mcp) as c:
+                yield c, router
+    finally:
+        mcp._lifespan = original
+
+
+class TestStoredCredentialScope:
+    async def test_check_write_blocks_read_api_credentials(self):
+        async with _creds_tool_client(["read_api"]) as (client, router):
+            router.get("/projects/123").mock(return_value=Response(200, json={"id": 123}))
+            write = _parse(await client.call_tool("gitlab_create_project", {"name": "x"}))
+            assert "error" in write
+            assert "--scopes api" in write["hint"]
+            read = _parse(await client.call_tool("gitlab_get_project", {"project_id": "123"}))
+            assert read["id"] == 123
+
+    async def test_api_scope_credentials_allow_writes(self):
+        async with _creds_tool_client(["api"]) as (client, router):
+            router.post("/projects").mock(return_value=Response(201, json={"id": 5, "name": "x"}))
+            created = _parse(await client.call_tool("gitlab_create_project", {"name": "x"}))
+            assert created["id"] == 5
+
+
+class TestLifespanPrecedence:
+    """R4 precedence matrix, exercised through the real lifespan."""
+
+    async def test_env_token_ignores_store(self, tmp_path, monkeypatch):
+        for var in ("GITLAB_PAT", "GITLAB_PERSONAL_ACCESS_TOKEN", "GITLAB_API_TOKEN"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("GITLAB_URL", _TEST_URL)
+        monkeypatch.setenv("GITLAB_TOKEN", "pat-xyz")
+        monkeypatch.delenv("GITLAB_AUTH", raising=False)
+        CredentialStore().save(
+            _TEST_URL,
+            {
+                "client_id": "c",
+                "access_token": "a",
+                "refresh_token": "r",
+                "expires_at": 9999999999,
+                "scopes": ["api"],
+            },
+        )
+        cm = lifespan(mcp)
+        ctx = await cm.__aenter__()
+        try:
+            assert ctx["config"].credentials is None
+            assert ctx["client"]._auth_headers.get("PRIVATE-TOKEN") == "pat-xyz"
+        finally:
+            await cm.__aexit__(None, None, None)
+
+    async def test_no_env_uses_store_bearer(self, tmp_path, monkeypatch):
+        for var in (
+            "GITLAB_TOKEN",
+            "GITLAB_PAT",
+            "GITLAB_PERSONAL_ACCESS_TOKEN",
+            "GITLAB_API_TOKEN",
+        ):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("GITLAB_URL", _TEST_URL)
+        monkeypatch.delenv("GITLAB_AUTH", raising=False)
+        CredentialStore().save(
+            _TEST_URL,
+            {
+                "client_id": "c",
+                "access_token": "a",
+                "refresh_token": "r",
+                "expires_at": 9999999999,
+                "scopes": ["api"],
+            },
+        )
+        cm = lifespan(mcp)
+        ctx = await cm.__aenter__()
+        try:
+            assert ctx["config"].credentials is not None
+            assert ctx["client"]._credentials is not None
+            assert ctx["client"]._auth_headers == {}
+        finally:
+            await cm.__aexit__(None, None, None)
+
+    async def test_no_env_no_file_raises_login_hint(self, tmp_path, monkeypatch):
+        for var in (
+            "GITLAB_TOKEN",
+            "GITLAB_PAT",
+            "GITLAB_PERSONAL_ACCESS_TOKEN",
+            "GITLAB_API_TOKEN",
+        ):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("GITLAB_URL", _TEST_URL)
+        monkeypatch.delenv("GITLAB_AUTH", raising=False)
+        with pytest.raises(ValueError, match="mcp-gitlab auth login"):
+            await lifespan(mcp).__aenter__()
