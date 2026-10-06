@@ -132,6 +132,30 @@ def test_scopes_property_splits():
     assert GitLabConfig().scopes == ["api"]
 
 
+class _Creds:
+    scopes = ["read_api"]
+
+
+def test_validate_accepts_credentials_without_token():
+    """Stored OAuth credentials satisfy validate() with no env token."""
+    config = GitLabConfig(url="https://gitlab.example.com", token="", credentials=_Creds())
+    config.validate()  # no raise
+
+
+def test_validate_missing_token_mentions_login():
+    config = GitLabConfig(url="https://gitlab.example.com", token="")
+    with pytest.raises(ValueError, match="mcp-gitlab auth login"):
+        config.validate()
+    # The existing GITLAB_TOKEN match still holds.
+    with pytest.raises(ValueError, match="GITLAB_TOKEN"):
+        config.validate()
+
+
+def test_token_scopes_property():
+    assert GitLabConfig().token_scopes is None
+    assert GitLabConfig(credentials=_Creds()).token_scopes == ["read_api"]
+
+
 def test_oauth_base_url_strips_trailing_slash():
     env = {
         "GITLAB_URL": "https://gitlab.example.com",

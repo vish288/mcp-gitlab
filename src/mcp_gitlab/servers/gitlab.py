@@ -52,10 +52,18 @@ PerPage = Annotated[int | None, Field(description="Results per page (1-100)", ge
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     config = GitLabConfig.from_env()
+    if config.auth == "token" and not config.token:
+        from ..local_auth import CredentialStore
+
+        config.credentials = CredentialStore(verify=config.ssl_verify, timeout=config.timeout).load(
+            config.url
+        )
     config.validate()
     pkg_version = version("mcp-gitlab")
     _log.info("mcp-gitlab %s starting", pkg_version)
     _log.info("GitLab: %s (read-only: %s)", config.url, config.read_only)
+    if config.auth == "token":
+        _log.info("Auth: %s", "stored OAuth credentials" if config.credentials else "env token")
     client = GitLabClient(config)
     try:
         yield {"client": client, "config": config}
@@ -95,6 +103,8 @@ def _check_write(ctx: Context) -> None:
     cfg = _get_config(ctx)
     if cfg.read_only:
         raise GitLabWriteDisabledError
+    if cfg.token_scopes is not None and "api" not in cfg.token_scopes:
+        raise GitLabWriteDisabledError(reason="scope")
     if cfg.auth == "oauth":
         tok = get_access_token()
         if tok is None or "api" not in tok.scopes:
@@ -179,13 +189,15 @@ def _err(error: Exception) -> str:
         detail["body"] = error.body
         detail["hint"] = (
             "Token rejected by GitLab. Token mode: check GITLAB_TOKEN has the 'api' scope. "
+            "Local sign-in: run mcp-gitlab auth login. "
             "OAuth mode: re-authorize in your MCP client."
         )
     elif isinstance(error, GitLabWriteDisabledError):
         if error.reason == "scope":
             detail["hint"] = (
-                "Re-authorize with the 'api' scope, or ask the operator to set "
-                "GITLAB_OAUTH_SCOPES=api."
+                "Write operations need the GitLab 'api' scope. "
+                "Local sign-in: run mcp-gitlab auth login --scopes api. "
+                "OAuth mode: re-authorize with 'api' or set GITLAB_OAUTH_SCOPES=api."
             )
         else:
             detail["hint"] = (

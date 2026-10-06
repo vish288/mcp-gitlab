@@ -281,3 +281,20 @@ Test the deployment with a real GitLab account:
 - [ ] Repeat with a `read_api`-only token and confirm writes are refused with the scope hint.
 - [ ] Revoke the application in GitLab **Settings → Applications → Authorized applications**.
 - [ ] Trigger another tool call, confirm a `401`, and confirm the client re-authorizes.
+
+## 11. Local sign-in (stdio)
+
+This is not OAuth mode. It is a GitLab OAuth client inside the CLI, for one user on stdio. The server stays in token mode. Nothing in sections 1-10 changes.
+
+`mcp-gitlab auth login` signs you in to GitLab and stores the tokens locally; the server reads and refreshes them. Use it when you run the server for yourself over stdio and have no personal access token.
+
+| Aspect | OAuth mode (`--auth oauth`) | Local sign-in (`mcp-gitlab auth login`) |
+|---|---|---|
+| Transport | `streamable-http` only | `stdio` |
+| Who holds the GitLab token | each connecting user | the local user who signed in |
+| App type | confidential (has a secret) | public (no secret) |
+| Client secret | required (`GITLAB_OAUTH_CLIENT_SECRET`) | never used |
+| Storage | encrypted proxy store under `$FASTMCP_HOME` | `~/.config/mcp-gitlab/credentials.json` (mode 0600) |
+| MCP wire | resource server + OAuth proxy | unchanged; plain token mode |
+
+See the README section "Sign in without a token" for the commands, the client-ID rule, and how to register the app.

@@ -18,8 +18,8 @@
       "environmentVariables": [
         {
           "name": "GITLAB_TOKEN",
-          "description": "GitLab personal access token (token mode; also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, or GITLAB_API_TOKEN)",
-          "isRequired": true,
+          "description": "GitLab personal access token (token mode). Optional after `mcp-gitlab auth login`; also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_API_TOKEN",
+          "isRequired": false,
           "format": "string",
           "isSecret": true
         },
@@ -46,7 +46,7 @@
         },
         {
           "name": "GITLAB_OAUTH_CLIENT_ID",
-          "description": "Application ID of the GitLab OAuth app (oauth mode)",
+          "description": "Application ID of the GitLab OAuth app (oauth mode, or local sign-in on a self-managed instance)",
           "isRequired": false,
           "format": "string",
           "isSecret": false
