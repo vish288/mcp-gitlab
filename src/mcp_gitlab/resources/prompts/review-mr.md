@@ -4,7 +4,7 @@
 
 1. **Fetch MR details** — use `gitlab_get_mr` with project_id="$project_id" and mr_iid="$mr_iid". Note the author, source/target branches, description, and labels.
 2. **Check pipeline status** — use `gitlab_list_mr_pipelines` to find the latest pipeline for the MR. If its status is not `success`, flag it before proceeding.
-3. **Get the diff** — use `gitlab_mr_changes` to retrieve all changed files.
+3. **Get the diff** — use `gitlab_mr_changes` with `per_page=100` and follow `next_page` (re-call with each returned page) until `has_more` is false, so no changed file is missed. A per-file diff over 30,000 characters comes back truncated (`truncated: true`); read the untruncated content with `gitlab_get_file` at the MR's head ref.
 4. **Review each changed file** — use `gitlab_get_file` (at the MR's head ref) to read the full surrounding context a diff hunk omits, then evaluate:
    - Correctness and logic errors
    - Test coverage for new/changed code paths

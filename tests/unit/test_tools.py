@@ -522,6 +522,19 @@ class TestVariables:
         assert parsed["status"] == "deleted"
         assert parsed["key"] == "MY_KEY"
 
+    async def test_delete_variable_rejects_dot_segment_key(self, tool_client):
+        """R01: key='..' must not collapse to DELETE /projects/123 (project delete)."""
+        client, router = tool_client
+        router._assert_all_called = False
+        trap = router.delete("/projects/123").mock(return_value=Response(200, json={}))
+        result = await client.call_tool(
+            "gitlab_delete_variable",
+            {"project_id": "123", "key": ".."},
+        )
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert not trap.called
+
 
 # ═══════════════════════════════════════════════════════
 # Projects (write operations)
@@ -1010,13 +1023,11 @@ class TestMergeRequestWrites:
 
     async def test_mr_changes(self, tool_client):
         client, router = tool_client
-        router.get("/projects/123/merge_requests/1/changes").mock(
+        router.get("/projects/123/merge_requests/1/diffs").mock(
             return_value=Response(
                 200,
-                json={
-                    "iid": 1,
-                    "changes": [{"old_path": "a.py", "new_path": "a.py", "diff": "@@..."}],
-                },
+                json=[{"old_path": "a.py", "new_path": "a.py", "diff": "@@..."}],
+                headers={"x-next-page": "2"},
             )
         )
         result = await client.call_tool(
@@ -1024,8 +1035,31 @@ class TestMergeRequestWrites:
             {"project_id": "123", "mr_iid": 1},
         )
         parsed = _parse(result)
-        assert parsed["iid"] == 1
-        assert len(parsed["changes"]) == 1
+        assert parsed["count"] == 1
+        assert parsed["items"][0]["old_path"] == "a.py"
+        assert parsed["has_more"] is True
+        assert parsed["next_page"] == 2
+
+    async def test_mr_changes_truncates_large_diff(self, tool_client):
+        """R02: a file diff over the per-file cap is truncated and flagged."""
+        from mcp_gitlab.servers.gitlab import _MAX_DIFF_CHARS
+
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200,
+                json=[{"old_path": "big.lock", "new_path": "big.lock", "diff": "+x\n" * 40000}],
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_mr_changes",
+            {"project_id": "123", "mr_iid": 1},
+        )
+        parsed = _parse(result)
+        entry = parsed["items"][0]
+        assert entry["truncated"] is True
+        assert len(entry["diff"]) < _MAX_DIFF_CHARS + 200
+        assert "diff truncated" in entry["diff"]
 
 
 # ═══════════════════════════════════════════════════════
@@ -1185,6 +1219,21 @@ class TestMRDiscussions:
         parsed = _parse(result)
         assert parsed["id"] == 4
         assert parsed["body"] == "Reply here"
+
+    async def test_reply_to_discussion_rejects_dot_segment_id(self, tool_client):
+        """R01: discussion_id='..' must not collapse the reply onto another endpoint."""
+        client, router = tool_client
+        router._assert_all_called = False
+        trap = router.post("/projects/123/merge_requests/1/notes").mock(
+            return_value=Response(201, json={"id": 9})
+        )
+        result = await client.call_tool(
+            "gitlab_reply_to_discussion",
+            {"project_id": "123", "mr_iid": 1, "discussion_id": "..", "body": "x"},
+        )
+        parsed = _parse(result)
+        assert "error" in parsed
+        assert not trap.called
 
     async def test_resolve_discussion(self, tool_client):
         client, router = tool_client
@@ -1966,6 +2015,51 @@ class TestOptionalParams:
         parsed = _parse(result)
         assert "error" in parsed
         assert "not mergeable" in parsed["error"]
+
+    async def test_merge_mr_sequence_reports_scheduled(self, tool_client):
+        """R03: an MWPS merge comes back still-open with the flag set — it is
+        scheduled, not merged, and the batch status reflects that."""
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1").mock(
+            return_value=Response(200, json={"iid": 1, "detailed_merge_status": "ci_still_running"})
+        )
+        router.put("/projects/123/merge_requests/1/merge").mock(
+            return_value=Response(
+                200, json={"iid": 1, "state": "opened", "merge_when_pipeline_succeeds": True}
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_merge_mr_sequence",
+            {"project_id": "123", "mr_iids": [1], "merge_when_pipeline_succeeds": True},
+        )
+        parsed = _parse(result)
+        assert parsed["scheduled"] == [1]
+        assert parsed["merged"] == []
+        assert parsed["status"] == "merged_and_scheduled"
+
+    async def test_merge_mr_sequence_repolls_unchecked(self, tool_client, monkeypatch):
+        """R03: merging MR N re-marks the next MR unchecked; the sequence polls
+        it to mergeable instead of bailing out."""
+        import mcp_gitlab.servers.gitlab as glmod
+
+        monkeypatch.setattr(glmod, "_MERGE_POLL_DELAY", 0)
+        client, router = tool_client
+        router.get("/projects/123/merge_requests/1").mock(
+            side_effect=[
+                Response(200, json={"iid": 1, "detailed_merge_status": "unchecked"}),
+                Response(200, json={"iid": 1, "detailed_merge_status": "mergeable"}),
+            ]
+        )
+        router.put("/projects/123/merge_requests/1/merge").mock(
+            return_value=Response(200, json={"iid": 1, "state": "merged"})
+        )
+        result = await client.call_tool(
+            "gitlab_merge_mr_sequence",
+            {"project_id": "123", "mr_iids": [1]},
+        )
+        parsed = _parse(result)
+        assert parsed["merged"] == [1]
+        assert parsed["status"] == "all_merged"
 
     async def test_add_mr_note_internal(self, tool_client):
         client, router = tool_client
