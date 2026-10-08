@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import functools
 import json
@@ -176,6 +177,33 @@ _JOB_KEYS = (
 
 def _slim(d: dict, keys: tuple) -> dict:
     return {k: d[k] for k in keys if k in d}
+
+
+# Each file's diff text past this many characters is truncated with a marker.
+# A single lockfile or generated file otherwise floods the model's context;
+# the caller can page for more files but rarely needs a whole huge diff inline.
+_MAX_DIFF_CHARS = 30_000
+_DIFF_TRUNCATED = "\n... [diff truncated — file exceeds the per-file diff cap]"
+
+
+def _cap_diffs(diffs: Any) -> Any:
+    """Truncate each file's ``diff`` text to ``_MAX_DIFF_CHARS`` in place.
+
+    Marks truncated entries with ``truncated: true`` so the caller can tell a
+    capped diff from a complete one. Shared by mr_changes, compare, and
+    get_commit so the cap cannot drift between them. Non-list payloads (e.g. an
+    error dict) pass through untouched.
+    """
+    if not isinstance(diffs, list):
+        return diffs
+    for entry in diffs:
+        if not isinstance(entry, dict):
+            continue
+        text = entry.get("diff")
+        if isinstance(text, str) and len(text) > _MAX_DIFF_CHARS:
+            entry["diff"] = text[:_MAX_DIFF_CHARS] + _DIFF_TRUNCATED
+            entry["truncated"] = True
+    return diffs
 
 
 def _err(error: Exception) -> str:
@@ -943,7 +971,7 @@ async def gitlab_get_commit(
     base = f"/projects/{_enc(project_id)}/repository/commits/{quote(sha, safe='')}"
     commit = await client.get(base)
     if include_diff:
-        commit["diffs"] = await client.get(f"{base}/diff")
+        commit["diffs"] = _cap_diffs(await client.get(f"{base}/diff"))
     return _ok(commit)
 
 
@@ -1000,14 +1028,16 @@ async def gitlab_compare(
 ) -> str:
     """Compare two refs (branch, tag, or sha).
 
-    Returns commits, diffs, compare_timeout, and compare_same_ref flags.
+    Returns commits, diffs, compare_timeout, and compare_same_ref flags. A file
+    whose diff exceeds the per-file cap is truncated and flagged truncated=true.
     """
-    return _ok(
-        await _get_client(ctx).get(
-            f"/projects/{_enc(project_id)}/repository/compare",
-            {"from": from_ref, "to": to_ref},
-        )
+    result = await _get_client(ctx).get(
+        f"/projects/{_enc(project_id)}/repository/compare",
+        {"from": from_ref, "to": to_ref},
     )
+    if isinstance(result, dict) and "diffs" in result:
+        result["diffs"] = _cap_diffs(result["diffs"])
+    return _ok(result)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1195,6 +1225,42 @@ async def gitlab_merge_mr(
     )
 
 
+# detailed_merge_status values that merge immediately.
+_MERGE_OK = ("mergeable", "can_be_merged")
+# Transient states to wait out: merging MR N updates the target branch, so GitLab
+# re-marks MR N+1 unchecked/checking; ci_still_running may also clear on its own.
+_MERGE_WAIT = ("unchecked", "checking", "ci_still_running")
+# Bound on the wait (tests patch _MERGE_POLL_DELAY to 0).
+_MERGE_POLL_TRIES = 10
+_MERGE_POLL_DELAY = 2.0
+
+
+async def _await_mergeable(
+    client: GitLabClient, project_id: str, iid: int, *, mwps: bool
+) -> tuple[bool, str]:
+    """Poll detailed_merge_status until it settles. Returns (acceptable, status).
+
+    Re-polls the transient unchecked/checking/ci_still_running states a bounded
+    number of times. When merge-when-pipeline-succeeds was requested,
+    ci_still_running/ci_must_pass are acceptable right away (the caller asked to
+    wait for the pipeline, which GitLab does via MWPS). Any other non-OK status
+    (conflict, not_approved, …) is returned as not acceptable without waiting.
+    """
+    status = ""
+    for attempt in range(_MERGE_POLL_TRIES):
+        mr = await client.get_merge_request(project_id, iid)
+        status = mr.get("detailed_merge_status", mr.get("merge_status", "")) or ""
+        if status in _MERGE_OK:
+            return True, status
+        if mwps and status in ("ci_still_running", "ci_must_pass"):
+            return True, status
+        if status not in _MERGE_WAIT:
+            return False, status
+        if attempt < _MERGE_POLL_TRIES - 1:
+            await asyncio.sleep(_MERGE_POLL_DELAY)
+    return False, status
+
+
 @mcp.tool(
     tags={"gitlab", "merge_requests", "write"},
     annotations={"readOnlyHint": False, "openWorldHint": True},
@@ -1215,11 +1281,17 @@ async def gitlab_merge_mr_sequence(
 ) -> str:
     """Merge several MRs sequentially, stopping at the first failure.
 
-    Returns a per-MR result list with merged/failed status and any error.
+    Returns {status, merged, scheduled, merged_so_far}. Merging an MR updates
+    the target branch, so the next MR is re-checked (unchecked/checking are
+    polled, not treated as failures). With merge_when_pipeline_succeeds, an MR
+    whose pipeline is still running is scheduled to auto-merge and reported in
+    `scheduled`, not `merged`.
     """
     # Keeps its own expected-error handler: the envelope must say which MRs
     # already merged before the failure. Bugs still fall through to tool_result.
     merged: list[int] = []
+    scheduled: list[int] = []
+    mwps = bool(merge_when_pipeline_succeeds)
     try:
         _check_write(ctx)
         client = _get_client(ctx)
@@ -1230,21 +1302,28 @@ async def gitlab_merge_mr_sequence(
         )
         for iid in mr_iids:
             if require_mergeable_status:
-                mr = await client.get_merge_request(project_id, iid)
-                status = mr.get("detailed_merge_status", mr.get("merge_status", ""))
-                if status not in ("mergeable", "can_be_merged"):
+                ok, status = await _await_mergeable(client, project_id, iid, mwps=mwps)
+                if not ok:
                     return _ok(
                         {
                             "error": f"MR !{iid} is not mergeable (status: {status})",
                             "merged_so_far": merged,
+                            "scheduled": scheduled,
                         }
                     )
-            await client.merge_merge_request(project_id, iid, params)
-            merged.append(iid)
-        return _ok({"status": "all_merged", "merged": merged})
+            resp = await client.merge_merge_request(project_id, iid, params)
+            # MWPS merges come back still open (state != merged) with the flag
+            # set: the merge is scheduled for when the pipeline passes, not done.
+            if resp.get("state") != "merged" and resp.get("merge_when_pipeline_succeeds"):
+                scheduled.append(iid)
+            else:
+                merged.append(iid)
+        status = "all_merged" if not scheduled else "merged_and_scheduled"
+        return _ok({"status": status, "merged": merged, "scheduled": scheduled})
     except GitLabError as e:
         detail = json.loads(_err(e))
         detail["merged_so_far"] = merged
+        detail["scheduled"] = scheduled
         return _ok(detail)
 
 
@@ -1280,11 +1359,25 @@ async def gitlab_mr_changes(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
+    per_page: PerPage = None,
+    page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
 ) -> str:
-    """Get file changes of a merge request. Returns list of diffs with old/new paths and content."""
-    return _ok(
-        await _get_client(ctx).get(f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/changes")
+    """Get the file diffs of a merge request, one page at a time.
+
+    Returns {items, count, has_more, next_page}; each item has old_path,
+    new_path, diff, new_file, renamed_file, deleted_file. A file whose diff
+    exceeds the per-file cap is truncated and flagged truncated=true — page
+    through with per_page/page to see more files.
+
+    Uses GET .../merge_requests/:iid/diffs (the /changes endpoint it replaced is
+    deprecated and uncapped); unlike /changes this returns only the diff list,
+    not the enclosing MR object.
+    """
+    data, next_page = await _get_client(ctx).get_paged(
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/diffs",
+        {"per_page": per_page or 20, "page": page},
     )
+    return _paginated(_cap_diffs(data), next_page)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1539,7 +1632,8 @@ async def gitlab_reply_to_discussion(
     """
     return _ok(
         await _get_client(ctx).post(
-            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions/{discussion_id}/notes",
+            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}"
+            f"/discussions/{quote(discussion_id, safe='')}/notes",
             {"body": body},
         )
     )
@@ -1562,7 +1656,8 @@ async def gitlab_resolve_discussion(
     Returns the updated discussion with its resolved flag and notes.
     """
     data = await _get_client(ctx).put(
-        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions/{discussion_id}",
+        f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}"
+        f"/discussions/{quote(discussion_id, safe='')}",
         {"resolved": resolved},
     )
     return _ok(data)
@@ -2620,7 +2715,7 @@ async def gitlab_update_variable(
     """
     query = {"filter[environment_scope]": environment_scope} if environment_scope else None
     data = await _get_client(ctx).put(
-        f"/projects/{_enc(project_id)}/variables/{key}",
+        f"/projects/{_enc(project_id)}/variables/{quote(key, safe='')}",
         _variable_params(
             value=value,
             variable_type=variable_type,
@@ -2647,7 +2742,9 @@ async def gitlab_delete_variable(
 ) -> str:
     """Delete a project CI/CD variable. Returns a {status: deleted, key} confirmation."""
     query = {"filter[environment_scope]": environment_scope} if environment_scope else None
-    await _get_client(ctx).delete(f"/projects/{_enc(project_id)}/variables/{key}", params=query)
+    await _get_client(ctx).delete(
+        f"/projects/{_enc(project_id)}/variables/{quote(key, safe='')}", params=query
+    )
     return _ok({"status": "deleted", "key": key})
 
 
@@ -2738,7 +2835,7 @@ async def gitlab_update_group_variable(
     """Update a group CI/CD variable. Returns the updated variable object."""
     return _ok(
         await _get_client(ctx).put(
-            f"/groups/{_enc(group_id)}/variables/{key}",
+            f"/groups/{_enc(group_id)}/variables/{quote(key, safe='')}",
             _variable_params(
                 value=value,
                 variable_type=variable_type,
@@ -2762,7 +2859,7 @@ async def gitlab_delete_group_variable(
     key: Annotated[str, Field(description="Variable key", min_length=1)],
 ) -> str:
     """Delete a group CI/CD variable. Returns a {status: deleted, key} confirmation."""
-    await _get_client(ctx).delete(f"/groups/{_enc(group_id)}/variables/{key}")
+    await _get_client(ctx).delete(f"/groups/{_enc(group_id)}/variables/{quote(key, safe='')}")
     return _ok({"status": "deleted", "key": key})
 
 

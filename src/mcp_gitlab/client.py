@@ -12,7 +12,7 @@ from urllib.parse import quote, unquote
 import httpx
 
 from .config import GitLabConfig
-from .exceptions import GitLabApiError, GitLabAuthError, GitLabNotFoundError
+from .exceptions import GitLabApiError, GitLabAuthError, GitLabError, GitLabNotFoundError
 
 # Matches a GitLab project URL; captures the namespace/project path before any
 # `/-/...` suffix (merge_requests, pipelines, issues, etc.).
@@ -108,11 +108,28 @@ class GitLabClient:
             return self._auth_headers
         return {"Authorization": f"Bearer {await self._credentials.bearer()}"}
 
+    @staticmethod
+    def _reject_dot_segments(path: str) -> None:
+        """Reject ``.``/``..`` path segments before they reach httpx.
+
+        httpx resolves dot segments against the base URL, so an unencoded
+        ``..`` in a caller-supplied value (a variable key, a discussion id)
+        would walk the request up to a different endpoint — e.g.
+        ``DELETE /projects/:id`` instead of ``.../variables/...``. The call
+        sites URL-encode their inputs, but ``quote`` leaves ``.``/``..`` as-is,
+        so this is the catch-all that also covers any missed or future site.
+        """
+        for segment in path.split("/"):
+            if segment in (".", ".."):
+                msg = f"Invalid path segment {segment!r}: '.' and '..' are not allowed"
+                raise GitLabError(msg)
+
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """One send path for every verb, so refresh-on-401 cannot drift between
         ``_request`` and ``get_paged``. On a 401 with stored credentials it
         refreshes once (covering revocation or clock skew) and retries; the
         refresh raises ``GitLabAuthError`` on failure rather than looping."""
+        self._reject_dot_segments(path)
         resp = await self._client.request(method, path, headers=await self._headers(), **kwargs)
         if resp.status_code == 401 and self._credentials is not None:
             await self._credentials.refresh()

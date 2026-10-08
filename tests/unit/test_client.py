@@ -10,7 +10,12 @@ import respx
 
 from mcp_gitlab.client import GitLabClient
 from mcp_gitlab.config import GitLabConfig
-from mcp_gitlab.exceptions import GitLabApiError, GitLabAuthError, GitLabNotFoundError
+from mcp_gitlab.exceptions import (
+    GitLabApiError,
+    GitLabAuthError,
+    GitLabError,
+    GitLabNotFoundError,
+)
 from mcp_gitlab.local_auth import CredentialStore
 
 TEST_URL = "https://gitlab.example.com"
@@ -224,6 +229,16 @@ class TestRequest:
         )
         await client.get(f"/projects/{GitLabClient._encode_id('my-group/my-project')}")
         assert route.called
+
+    @pytest.mark.parametrize("bad", ["/projects/1/variables/..", "/projects/1/../2", "/.."])
+    async def test_send_rejects_dot_segments(self, client, mock_api, bad):
+        """R01: a '.'/'..' path segment is rejected before httpx can collapse it
+        and walk the request onto a different endpoint."""
+        mock_api._assert_all_called = False
+        trap = mock_api.route().mock(return_value=httpx.Response(200, json={}))
+        with pytest.raises(GitLabError):
+            await client.get(bad)
+        assert not trap.called
 
 
 class TestAuthHeaders:

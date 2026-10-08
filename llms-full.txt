@@ -414,7 +414,7 @@ The server provides MCP prompts — reusable multi-tool workflow templates that 
 **Workflow:**
 1. Fetch MR details — use `gitlab_get_mr` with project_id and mr_iid. Note the author, source/target branches, description, and labels.
 2. Check pipeline status — use `gitlab_get_pipeline` with the pipeline ID from step 1. If CI has not passed, flag it before proceeding.
-3. Get the diff — use `gitlab_mr_changes` to retrieve all changed files.
+3. Get the diff — use `gitlab_mr_changes` with `per_page=100` and follow `next_page` until `has_more` is false so no changed file is missed; per-file diffs over 30,000 characters come back truncated (`truncated: true`), read the full file with `gitlab_get_file` at the MR head ref.
 4. Review each changed file — use `gitlab_get_file` at the MR head ref for full context, then evaluate: correctness and logic errors, test coverage, security implications, performance, naming clarity and style consistency.
 5. Draft inline comments — use `gitlab_create_draft_note` for each finding (pass new_path plus new_line/old_line; diff SHAs auto-fill). Use Conventional Comments labels.
 6. Summarize — add a body-only draft note via `gitlab_create_draft_note` with what the MR does well, blocking issues, and non-blocking suggestions.
@@ -432,7 +432,7 @@ The server provides MCP prompts — reusable multi-tool workflow templates that 
 2. Check approval state — use `gitlab_get_mr_approvals` to see required approvals, who approved, and which rules apply.
 3. Check pipeline status — use `gitlab_list_mr_pipelines` to find the latest pipeline. Do not approve if CI has not passed.
 4. Review commits — use `gitlab_list_mr_commits` to understand scope. Flag force-pushed commits that may invalidate earlier reviews.
-5. Review the diff — use `gitlab_mr_changes` to inspect changed files for correctness, security, and test coverage.
+5. Review the diff — use `gitlab_mr_changes` with `per_page=100`, following `next_page` until `has_more` is false, to inspect every changed file for correctness, security, and test coverage; per-file diffs over 30,000 characters are truncated (`truncated: true`), read the full file with `gitlab_get_file` at the MR head ref.
 6. Check open discussions — use `gitlab_list_mr_discussions` and verify all threads are resolved.
 7. Decision — if all checks pass, use `gitlab_approve_mr` with HEAD sha. If issues found, post findings via `gitlab_create_mr_discussion`.
 

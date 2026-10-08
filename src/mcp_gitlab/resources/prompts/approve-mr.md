@@ -6,7 +6,7 @@
 2. **Check approval state** — use `gitlab_get_mr_approvals` to see how many approvals are required, who has already approved, and which approval rules apply.
 3. **Check pipeline status** — use `gitlab_list_mr_pipelines` to find the latest pipeline. If it has not passed, flag this and do not approve.
 4. **Review commits** — use `gitlab_list_mr_commits` to understand the scope of changes. Flag force-pushed or squashed commits that may invalidate earlier reviews.
-5. **Review the diff** — use `gitlab_mr_changes` to inspect all changed files. Look for:
+5. **Review the diff** — use `gitlab_mr_changes` with `per_page=100`, following `next_page` until `has_more` is false, to inspect every changed file. A per-file diff over 30,000 characters is truncated (`truncated: true`); read the full file with `gitlab_get_file` at the MR head ref. Look for:
    - Correctness and logic errors
    - Security implications (injection, auth, secrets)
    - Test coverage for new/changed code paths

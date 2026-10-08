@@ -270,7 +270,14 @@ ROWS = [
         {},
         {"skip_ci": False},
     ),
-    ("gitlab_mr_changes", {"project_id": "123", "mr_iid": 1}, "GET", f"{MR}/changes", {}, None),
+    (
+        "gitlab_mr_changes",
+        {"project_id": "123", "mr_iid": 1},
+        "GET",
+        f"{MR}/diffs",
+        {"per_page": "20", "page": "1"},
+        None,
+    ),
     # MR notes
     (
         "gitlab_list_mr_notes",
