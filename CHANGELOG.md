@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.0] - 2026-10-10
+
+### Bug Fixes
+- fix: path-traversal guard, MR diffs endpoint, merge-sequence status (review 2026-10-06) (44761ab)
+
+
 ## [0.15.0] - 2026-10-06
 
 ### Features
