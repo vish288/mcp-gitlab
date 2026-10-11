@@ -35,7 +35,7 @@ _TOKEN_ENV_VARS = (
 @click.option("--port", default=8000, help="Port for HTTP transports")
 @click.option("--host", default="127.0.0.1", help="Host for HTTP transports")
 @click.option("--gitlab-url", envvar="GITLAB_URL", help="GitLab instance URL")
-@click.option("--gitlab-token", envvar="GITLAB_TOKEN", help="GitLab personal access token")
+@click.option("--gitlab-token", hidden=True, help="Deprecated: set GITLAB_TOKEN instead")
 @click.option("--read-only", is_flag=True, help="Disable write operations")
 @click.option(
     "--auth",
@@ -64,6 +64,11 @@ def main(
     if gitlab_url:
         os.environ["GITLAB_URL"] = gitlab_url
     if gitlab_token:
+        click.echo(
+            "Warning: --gitlab-token is deprecated. It puts the token in the process argument "
+            "list, where `ps` and shell history can read it. Set GITLAB_TOKEN instead.",
+            err=True,
+        )
         os.environ["GITLAB_TOKEN"] = gitlab_token
     if read_only:
         os.environ["GITLAB_READ_ONLY"] = "true"

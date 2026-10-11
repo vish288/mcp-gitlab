@@ -524,8 +524,11 @@ uvx mcp-gitlab --auth oauth --transport streamable-http
 mcp-gitlab auth login|status|logout
 
 # CLI overrides for config
-uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
+GITLAB_TOKEN=glpat-xxx uvx mcp-gitlab --gitlab-url https://gitlab.example.com --read-only
 ```
+
+`--gitlab-token` still works but is deprecated and hidden from `--help`: it exposes the token to
+`ps` and shell history. Use `GITLAB_TOKEN`.
 
 `--auth {token,oauth}` selects the authentication mode (`token` by default);
 `oauth` requires `--transport streamable-http`.

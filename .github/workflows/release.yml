@@ -23,7 +23,12 @@ on:
         default: false
 
 jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+  lint:
+    uses: ./.github/workflows/lint.yml
   release:
+    needs: [test, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,13 +55,19 @@ jobs:
 
       - name: Compute next version
         id: next
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            version="${{ inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+              echo "::error::version '$INPUT_VERSION' must be X.Y.Z (digits only)"; exit 1; }
+            version="$INPUT_VERSION"
             echo "Explicit version: $version"
           else
-            IFS='.' read -r major minor patch <<< "${{ steps.current.outputs.version }}"
-            case "${{ inputs.bump }}" in
+            IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+            case "$INPUT_BUMP" in
               major) major=$((major + 1)); minor=0; patch=0 ;;
               minor) minor=$((minor + 1)); patch=0 ;;
               patch) patch=$((patch + 1)) ;;
@@ -172,21 +183,23 @@ jobs:
       - name: Verify build
         run: uv build
 
-      - name: Create release commit and tag via API
-        if: ${{ !inputs.dry_run }}
+      # Step A — always runs (dry-run included). Created under GITHUB_TOKEN with
+      # no author/committer so GitHub signs it as github-actions[bot] (Verified).
+      # In dry-run the commit is a dangling object (no ref) and GitHub GCs it.
+      - name: Create verified release commit
+        id: commit
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEXT_VERSION: ${{ steps.next.outputs.version }}
         run: |
-          MAIN_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
-          BASE_TREE=$(gh api repos/${{ github.repository }}/git/commits/$MAIN_SHA --jq '.tree.sha')
+          BASE_TREE=$(gh api repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA --jq '.tree.sha')
 
           # Create blobs for all modified files (use temp files to avoid ARG_MAX limits on large files)
           create_blob() {
             local file="$1"
             base64 -w 0 "$file" > /tmp/b64content.txt
             jq -Rs '{"encoding":"base64","content":rtrimstr("\n")}' /tmp/b64content.txt > /tmp/blob.json
-            gh api repos/${{ github.repository }}/git/blobs \
+            gh api repos/$GITHUB_REPOSITORY/git/blobs \
               -X POST --input /tmp/blob.json --jq '.sha'
           }
 
@@ -199,7 +212,7 @@ jobs:
           GEMINI_BLOB=$(create_blob gemini-extension.json)
 
           # Create tree with all release files
-          NEW_TREE=$(gh api repos/${{ github.repository }}/git/trees \
+          NEW_TREE=$(gh api repos/$GITHUB_REPOSITORY/git/trees \
             -X POST \
             --input - <<EOF | jq -r '.sha'
           {
@@ -252,35 +265,45 @@ jobs:
           EOF
           )
 
-          # Create the commit
-          COMMIT_SHA=$(gh api repos/${{ github.repository }}/git/commits \
+          # Create the commit — no author/committer so GitHub signs it
+          COMMIT_SHA=$(gh api repos/$GITHUB_REPOSITORY/git/commits \
             -X POST \
             --input - <<EOF | jq -r '.sha'
           {
             "message": "chore(release): $NEXT_VERSION",
             "tree": "$NEW_TREE",
-            "parents": ["$MAIN_SHA"],
-            "author": {
-              "name": "github-actions[bot]",
-              "email": "github-actions[bot]@users.noreply.github.com"
-            }
+            "parents": ["$GITHUB_SHA"]
           }
           EOF
           )
 
-          # Update main to point to the new commit
-          gh api repos/${{ github.repository }}/git/refs/heads/main \
+          VERIFIED=$(gh api repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA --jq '.verification.verified')
+          REASON=$(gh api repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA --jq '.verification.reason')
+          [ "$VERIFIED" = "true" ] || { echo "::error::release commit $COMMIT_SHA is not verified ($REASON)"; exit 1; }
+          echo "Release commit $COMMIT_SHA verified: $VERIFIED ($REASON)"
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      # Step B — only on a real release. RELEASE_PAT is required: the Admin bypass
+      # on the main ruleset lets a direct push through, and the tag push triggers
+      # publish.yml. The fast-forward (force=false) fails if main moved mid-run.
+      - name: Push release commit and tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          NEXT_VERSION: ${{ steps.next.outputs.version }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          MAIN_SHA=$(gh api repos/$GITHUB_REPOSITORY/git/ref/heads/main --jq '.object.sha')
+          [ "$MAIN_SHA" = "$GITHUB_SHA" ] || { echo "::error::main moved from $GITHUB_SHA to $MAIN_SHA during the run; re-run the release"; exit 1; }
+          gh api repos/$GITHUB_REPOSITORY/git/refs/heads/main \
             -X PATCH \
             -f sha="$COMMIT_SHA" \
             -F force=false
-
-          # Create the tag reference
-          gh api repos/${{ github.repository }}/git/refs \
+          gh api repos/$GITHUB_REPOSITORY/git/refs \
             -X POST \
             -f ref="refs/tags/v$NEXT_VERSION" \
             -f sha="$COMMIT_SHA"
-
-          echo "Created commit $COMMIT_SHA and tag v$NEXT_VERSION"
+          echo "Pushed commit $COMMIT_SHA and tag v$NEXT_VERSION"
 
       - name: Dry run summary
         if: ${{ inputs.dry_run }}
@@ -289,6 +312,7 @@ jobs:
           echo "- Current: ${{ steps.current.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Next: ${{ steps.next.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Bump: ${{ inputs.bump }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release commit ${{ steps.commit.outputs.sha }} verified: true (dangling, not pushed)" >> "$GITHUB_STEP_SUMMARY"
           echo "- No changes pushed." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Changelog Preview" >> "$GITHUB_STEP_SUMMARY"

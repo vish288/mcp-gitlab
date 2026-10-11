@@ -175,6 +175,43 @@ def test_auth_logout_revokes_then_deletes(tmp_path):
         assert not store.path.exists()
 
 
+def test_token_flag_hidden_from_help():
+    runner = CliRunner()
+    result = runner.invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "--gitlab-token" not in result.output
+    assert "--gitlab-url" in result.output  # control: a kept flag is still shown
+
+
+def test_token_flag_still_works_and_warns(tmp_path):
+    runner = CliRunner()
+    env = _no_token_env(tmp_path, GITLAB_URL=TEST_URL)
+    with (
+        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch.dict("os.environ", env, clear=False),
+    ):
+        result = runner.invoke(main, ["--gitlab-token", "argv-tok"])
+        assert result.exit_code == 0, result.output
+        mock_run.assert_called_once()
+        assert os.environ["GITLAB_TOKEN"] == "argv-tok"
+    assert "--gitlab-token is deprecated" in result.stderr
+    assert "GITLAB_TOKEN" in result.stderr
+    assert "deprecated" not in result.stdout
+
+
+def test_env_token_does_not_warn(tmp_path):
+    runner = CliRunner()
+    env = _no_token_env(tmp_path, GITLAB_URL=TEST_URL, GITLAB_TOKEN="env-tok")
+    with (
+        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch.dict("os.environ", env, clear=False),
+    ):
+        result = runner.invoke(main, [])
+        assert result.exit_code == 0, result.output
+        mock_run.assert_called_once()
+    assert "deprecated" not in result.stderr
+
+
 def test_sigint_exits_130(tmp_path):
     runner = CliRunner()
 
