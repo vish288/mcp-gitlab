@@ -792,8 +792,9 @@ async def test_bug_is_a_tool_error_not_a_result(tool_client, caplog):
 
 async def test_api_error_is_an_error_result_with_hint(tool_client):
     """A 404 comes back as an ``isError: true`` result whose text carries the hint and
-    whose ``structuredContent`` is the same object as that text — the one place the
-    structured/text equality of the error contract is pinned."""
+    which sets no ``structuredContent`` — a strict client (TS SDK) validates
+    structuredContent against the outputSchema even when isError, so the error body
+    stays in the text content only."""
     client, router = tool_client
     router.get("/projects/123").mock(return_value=Response(404, json={"message": "gone"}))
 
@@ -804,4 +805,24 @@ async def test_api_error_is_an_error_result_with_hint(tool_client):
     assert result.is_error is True
     body = json.loads(result.content[0].text)
     assert "hint" in body
-    assert result.structured_content == body
+    assert result.structured_content is None
+
+
+@pytest.mark.parametrize("row", ROWS, ids=[r[0] for r in ROWS])
+async def test_error_result_passes_strict_client(tool_client, row):
+    """A strict MCP client (TS SDK) validates ``structuredContent`` against the tool's
+    outputSchema even on an ``isError`` result. Every forced failure must therefore either
+    carry no structuredContent or carry one that validates — otherwise the client raises
+    McpError and the error text + hint are lost. Fails on pre-fix code, where every error
+    result set structuredContent to the error dict, which the wrapped schema rejects."""
+    import jsonschema
+
+    name, args, method, path, _query, _body = row
+    client, router = tool_client
+    router.request(method, path).mock(return_value=Response(404, json={"message": "404 Not Found"}))
+
+    schema = {t.name: t.output_schema for t in await client.list_tools()}[name]
+    result = await client.call_tool(name, args, raise_on_error=False)
+
+    if result.structured_content is not None and schema is not None:
+        jsonschema.validate(result.structured_content, schema)

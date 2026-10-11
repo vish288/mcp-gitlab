@@ -52,7 +52,7 @@ target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waive
 
 - All tools are `async def` returning JSON strings
 - `_ok(data)` for success; `_err(e)` builds the error dict that `_error_result` wraps into the `isError` result; `_paginated(items)` for list responses
-- Errors: expected failures are `isError: true` results whose text and `structuredContent` are the same `{"error", "status_code"?, "body"?, "hint"?}` object; bugs are `isError: true` with `TypeName: message` text and no `structuredContent`, logged with a traceback
+- Errors: expected failures are `isError: true` results whose text content is the `{"error", "status_code"?, "body"?, "hint"?}` object and which set no `structuredContent` (a strict client — the TS MCP SDK — validates `structuredContent` against the tool's output schema even on an error, and the schema rejects the error body); bugs are `isError: true` with `TypeName: message` text and no `structuredContent`, logged with a traceback
 - `_slim_pipeline` / `_slim_job` trim pipeline and job payloads; tools expose `slim=True` by default
 - Write access control: `_check_write(ctx)` raises `GitLabWriteDisabledError` when `GITLAB_READ_ONLY=true`
 - Tags: every tool tagged with `{"gitlab", "<category>", "read"|"write"}`

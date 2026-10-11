@@ -491,7 +491,7 @@ The server provides MCP prompts — reusable multi-tool workflow templates that 
 
 ## Error results
 
-An expected failure (a 404, a 401, a validation error, or a write blocked by read-only mode) comes back as a tool result with the protocol-level `isError` flag set, so a client can detect and self-correct instead of parsing an `"error"` key out of an otherwise successful result. The body is a JSON object with `error` and, where it helps, `status_code`, `body`, and an actionable `hint`. That same object is returned both as the result's text content and as its `structuredContent`, so the two are always equal; an unexpected bug is also an `isError` result but carries only `TypeName: message` text and no `structuredContent`.
+An expected failure (a 404, a 401, a validation error, or a write blocked by read-only mode) comes back as a tool result with the protocol-level `isError` flag set, so a client can detect and self-correct instead of parsing an `"error"` key out of an otherwise successful result. The body is a JSON object with `error` and, where it helps, `status_code`, `body`, and an actionable `hint`. That object is the result's text content; the error sets no `structuredContent`, because a strict client (the TypeScript MCP SDK) validates `structuredContent` against the tool's output schema even on an `isError` result and the schema would reject the error body. An unexpected bug is also an `isError` result but carries only `TypeName: message` text, likewise with no `structuredContent`.
 
 ## Security Considerations
 
