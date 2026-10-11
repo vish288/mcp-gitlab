@@ -93,3 +93,4 @@ statements at 100%, src/ coverage 99%.
 - Released versions: 0.10.3 (harness), 0.11.0 (contract). No dedup branch.
 - Closed issues: #75, #76, #77, #78, #79, and #80's tests/-side items
   (its src/ items remain open).
+- Superseded for expected failures by 2026-10-11 X1: they now return `isError: true` results (same JSON body) rather than JSON on a successful result.

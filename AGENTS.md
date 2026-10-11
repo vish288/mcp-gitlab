@@ -51,7 +51,8 @@ target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waive
 ## Patterns
 
 - All tools are `async def` returning JSON strings
-- `_ok(data)` for success, `_err(e)` for failure; `_paginated(items)` for list responses
+- `_ok(data)` for success; `_err(e)` builds the error dict that `_error_result` wraps into the `isError` result; `_paginated(items)` for list responses
+- Errors: expected failures are `isError: true` results whose text and `structuredContent` are the same `{"error", "status_code"?, "body"?, "hint"?}` object; bugs are `isError: true` with `TypeName: message` text and no `structuredContent`, logged with a traceback
 - `_slim_pipeline` / `_slim_job` trim pipeline and job payloads; tools expose `slim=True` by default
 - Write access control: `_check_write(ctx)` raises `GitLabWriteDisabledError` when `GITLAB_READ_ONLY=true`
 - Tags: every tool tagged with `{"gitlab", "<category>", "read"|"write"}`
@@ -76,7 +77,7 @@ Every tool MUST have `annotations={}` with at minimum `readOnlyHint`.
 - Good: "Get merge request details. Returns title, state, branches, author, diff_refs."
 
 ### Error handling
-- Every tool MUST wrap in try/except and return `_err(e)` — never raise.
+- Tools do not catch their own errors: the `tool_result` decorator wraps every tool, turns an expected `GitLabError` into an `isError: true` result via `_error_result(_err(e))`, and re-raises anything else as a `ToolError` (a bug) after logging it with a traceback. `gitlab_merge_mr_sequence` keeps its own `except GitLabError`, which for now still returns a successful result carrying the error body plus `merged_so_far`/`scheduled` (making that path `isError` is an open follow-up).
 - Error text MUST be actionable: what went wrong plus a suggested fix.
 - Never return concatenated JSON strings — always a single valid JSON object.
 - Never expose stack traces, tokens, or internal paths.
@@ -222,8 +223,6 @@ complete; new entries appear in the right sections with parameters and annotatio
 ## Known Limitations
 
 - 91 tools in one server file, well past the 5-15 guideline. If you refactor it, split the tools by category.
-- Errors come back as successful tool results carrying `{"error": ...}` (soft-error pattern);
-  callers must inspect the JSON content rather than relying on protocol-level errors.
 - OAuth mode makes one `GET /oauth/token/info` call to GitLab per MCP request (no token-info cache).
   Add `fastmcp.utilities.token_cache.TokenCache` if GitLab rate-limits bite; revocation lag then
   equals the cache TTL.

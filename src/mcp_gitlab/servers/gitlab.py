@@ -16,6 +16,8 @@ from urllib.parse import quote
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
+from fastmcp.tools import ToolResult
+from mcp.types import TextContent
 from pydantic import Field
 
 from ..client import GitLabClient
@@ -206,7 +208,7 @@ def _cap_diffs(diffs: Any) -> Any:
     return diffs
 
 
-def _err(error: Exception) -> str:
+def _err(error: Exception) -> dict[str, Any]:
     detail: dict[str, Any] = {"error": str(error)}
     if isinstance(error, GitLabNotFoundError):
         detail["status_code"] = error.status_code
@@ -240,7 +242,23 @@ def _err(error: Exception) -> str:
             detail["hint"] = "Validation failed — check required fields and formats."
         elif error.status_code == 429:
             detail["hint"] = "Rate limited. Wait before retrying."
-    return json.dumps(detail, indent=2, ensure_ascii=False)
+    return detail
+
+
+def _error_result(detail: dict[str, Any]) -> ToolResult:
+    """Return an expected failure as an ``isError: true`` result.
+
+    Text content is byte-identical to the pre-X1 ``_err`` output (same
+    ``json.dumps``); ``structuredContent`` is the same dict un-escaped; the
+    protocol-level ``isError`` flag is set so clients can self-correct instead
+    of parsing ``"error"`` out of a successful result.
+    """
+    text = json.dumps(detail, indent=2, ensure_ascii=False)
+    return ToolResult(
+        content=[TextContent(type="text", text=text)],
+        structured_content=detail,
+        is_error=True,
+    )
 
 
 def _params(**kw: Any) -> dict[str, Any]:
@@ -313,7 +331,7 @@ def _variable_params(
     )
 
 
-_Tool = Callable[..., Awaitable[str]]
+_Tool = Callable[..., Awaitable[str | ToolResult]]
 
 
 def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
@@ -332,13 +350,13 @@ def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
 
     def wrap(f: _Tool) -> _Tool:
         @functools.wraps(f)
-        async def inner(ctx: Context, *args: Any, **kwargs: Any) -> str:
+        async def inner(ctx: Context, *args: Any, **kwargs: Any) -> str | ToolResult:
             try:
                 if write:
                     _check_write(ctx)
                 return await f(ctx, *args, **kwargs)
             except GitLabError as e:
-                return _err(e)
+                return _error_result(_err(e))
             except Exception as e:
                 _log.exception("%s failed", f.__name__)
                 msg = f"{type(e).__name__}: {e}"
@@ -1321,9 +1339,11 @@ async def gitlab_merge_mr_sequence(
         status = "all_merged" if not scheduled else "merged_and_scheduled"
         return _ok({"status": status, "merged": merged, "scheduled": scheduled})
     except GitLabError as e:
-        detail = json.loads(_err(e))
+        detail = _err(e)
         detail["merged_so_far"] = merged
         detail["scheduled"] = scheduled
+        # ponytail: stays a successful result carrying the error body for now;
+        # flipping this to isError is an open owner decision (X1 follow-up).
         return _ok(detail)
 
 
