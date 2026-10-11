@@ -26,6 +26,14 @@ def _parse(result: Any) -> dict | list:
     return json.loads(str(result))
 
 
+def _err_body(result: Any) -> dict:
+    """Error-path parse: the MCP error flag must be set; return the JSON body."""
+    assert result.is_error is True
+    body = _parse(result)
+    assert isinstance(body, dict)
+    return body
+
+
 # ═══════════════════════════════════════════════════════
 # Projects
 # ═══════════════════════════════════════════════════════
@@ -47,8 +55,10 @@ class TestGetProject:
         router.get("/projects/nonexistent").mock(
             return_value=Response(404, json={"message": "404 Project Not Found"})
         )
-        result = await client.call_tool("gitlab_get_project", {"project_id": "nonexistent"})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_get_project", {"project_id": "nonexistent"}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "hint" in parsed
         assert "Verify" in parsed["hint"]
@@ -58,8 +68,10 @@ class TestGetProject:
         router.get("/projects/123").mock(
             return_value=Response(401, json={"message": "401 Unauthorized"})
         )
-        result = await client.call_tool("gitlab_get_project", {"project_id": "123"})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_get_project", {"project_id": "123"}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "hint" in parsed
         assert "GITLAB_TOKEN" in parsed["hint"]
@@ -73,8 +85,10 @@ class TestGetProject:
 class TestReadOnlyMode:
     async def test_create_project_blocked(self, readonly_client):
         client, router = readonly_client
-        result = await client.call_tool("gitlab_create_project", {"name": "test"})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_create_project", {"name": "test"}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "hint" in parsed
         assert "read-only" in parsed["hint"].lower()
@@ -84,8 +98,9 @@ class TestReadOnlyMode:
         result = await client.call_tool(
             "gitlab_create_branch",
             {"project_id": "123", "branch_name": "feat/test", "ref": "main"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "read-only" in parsed["hint"].lower()
 
@@ -377,8 +392,9 @@ class TestErrorHints:
         result = await client.call_tool(
             "gitlab_create_branch",
             {"project_id": "123", "branch_name": "main", "ref": "main"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert parsed["status_code"] == 409
         assert "hint" in parsed
         assert "Conflict" in parsed["hint"]
@@ -396,8 +412,9 @@ class TestErrorHints:
                 "target_branch": "main",
                 "title": "Test",
             },
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert parsed["status_code"] == 422
         assert "hint" in parsed
         assert "Validation" in parsed["hint"]
@@ -405,8 +422,10 @@ class TestErrorHints:
     async def test_429_rate_limit_hint(self, tool_client):
         client, router = tool_client
         router.get("/projects/123").mock(return_value=Response(429, text="Rate limit exceeded"))
-        result = await client.call_tool("gitlab_get_project", {"project_id": "123"})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_get_project", {"project_id": "123"}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert parsed["status_code"] == 429
         assert "hint" in parsed
         assert "Rate" in parsed["hint"]
@@ -530,8 +549,9 @@ class TestVariables:
         result = await client.call_tool(
             "gitlab_delete_variable",
             {"project_id": "123", "key": ".."},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "error" in parsed
         assert not trap.called
 
@@ -1230,8 +1250,9 @@ class TestMRDiscussions:
         result = await client.call_tool(
             "gitlab_reply_to_discussion",
             {"project_id": "123", "mr_iid": 1, "discussion_id": "..", "body": "x"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "error" in parsed
         assert not trap.called
 
@@ -1285,8 +1306,10 @@ class TestMRApprovalsAndMetadata:
 
     async def test_approve_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
-        result = await client.call_tool("gitlab_approve_mr", {"project_id": "123", "mr_iid": 1})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_approve_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "read-only" in parsed["hint"].lower()
 
@@ -1301,8 +1324,10 @@ class TestMRApprovalsAndMetadata:
 
     async def test_unapprove_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
-        result = await client.call_tool("gitlab_unapprove_mr", {"project_id": "123", "mr_iid": 1})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_unapprove_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "read-only" in parsed["hint"].lower()
 
@@ -1374,8 +1399,10 @@ class TestMRApprovalsAndMetadata:
 
     async def test_subscribe_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
-        result = await client.call_tool("gitlab_subscribe_mr", {"project_id": "123", "mr_iid": 1})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_subscribe_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "read-only" in parsed["hint"].lower()
 
@@ -1390,8 +1417,10 @@ class TestMRApprovalsAndMetadata:
 
     async def test_unsubscribe_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
-        result = await client.call_tool("gitlab_unsubscribe_mr", {"project_id": "123", "mr_iid": 1})
-        parsed = _parse(result)
+        result = await client.call_tool(
+            "gitlab_unsubscribe_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
+        )
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "read-only" in parsed["hint"].lower()
 
@@ -2621,9 +2650,11 @@ class TestGetFile:
             )
         )
         result = await client.call_tool(
-            "gitlab_get_file", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+            "gitlab_get_file",
+            {"project_id": "123", "file_path": "app.py", "ref": "main"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "binary" in parsed["error"].lower()
 
@@ -2636,9 +2667,11 @@ class TestGetFile:
             )
         )
         result = await client.call_tool(
-            "gitlab_get_file", {"project_id": "123", "file_path": "app.py", "ref": "main"}
+            "gitlab_get_file",
+            {"project_id": "123", "file_path": "app.py", "ref": "main"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "error" in parsed
         assert "utf-8" in parsed["error"].lower()
 
@@ -2648,9 +2681,11 @@ class TestGetFile:
             return_value=Response(404, json={"message": "404 File Not Found"})
         )
         result = await client.call_tool(
-            "gitlab_get_file", {"project_id": "123", "file_path": "missing.py", "ref": "main"}
+            "gitlab_get_file",
+            {"project_id": "123", "file_path": "missing.py", "ref": "main"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert parsed["status_code"] == 404
         assert "Verify" in parsed["hint"]
 
@@ -2812,8 +2847,9 @@ class TestDraftNotes:
         result = await client.call_tool(
             "gitlab_create_draft_note",
             {"project_id": "123", "mr_iid": 1, "body": "x"},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "read-only" in parsed["hint"].lower()
 
     async def test_list(self, tool_client):
@@ -2842,9 +2878,11 @@ class TestDraftNotes:
     async def test_publish_blocked_readonly(self, readonly_client):
         client, _router = readonly_client
         result = await client.call_tool(
-            "gitlab_publish_draft_notes", {"project_id": "123", "mr_iid": 1}
+            "gitlab_publish_draft_notes",
+            {"project_id": "123", "mr_iid": 1},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "read-only" in parsed["hint"].lower()
 
     async def test_delete(self, tool_client):
@@ -2865,8 +2903,9 @@ class TestDraftNotes:
         result = await client.call_tool(
             "gitlab_delete_draft_note",
             {"project_id": "123", "mr_iid": 1, "draft_note_id": 5},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
+        parsed = _err_body(result)
         assert "read-only" in parsed["hint"].lower()
 
 
@@ -2927,7 +2966,9 @@ class TestStoredCredentialScope:
     async def test_check_write_blocks_read_api_credentials(self):
         async with _creds_tool_client(["read_api"]) as (client, router):
             router.get("/projects/123").mock(return_value=Response(200, json={"id": 123}))
-            write = _parse(await client.call_tool("gitlab_create_project", {"name": "x"}))
+            write = _err_body(
+                await client.call_tool("gitlab_create_project", {"name": "x"}, raise_on_error=False)
+            )
             assert "error" in write
             assert "--scopes api" in write["hint"]
             read = _parse(await client.call_tool("gitlab_get_project", {"project_id": "123"}))

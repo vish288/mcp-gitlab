@@ -757,8 +757,13 @@ async def test_forced_failure(tool_client, row):
     client, router = tool_client
     router.request(method, path).mock(return_value=Response(404, json={"message": "404 Not Found"}))
 
-    parsed = _parse(await client.call_tool(name, args))
+    result = await client.call_tool(name, args, raise_on_error=False)
 
+    # gitlab_merge_mr_sequence intentionally still reports its expected failures as a
+    # successful result (carrying merged_so_far); every other tool flips the isError flag.
+    if name != "gitlab_merge_mr_sequence":
+        assert result.is_error is True
+    parsed = _parse(result)
     assert NOT_FOUND_KEYS <= parsed.keys()
     assert parsed["status_code"] == 404
 
@@ -785,8 +790,10 @@ async def test_bug_is_a_tool_error_not_a_result(tool_client, caplog):
     assert logged and logged[0].exc_info is not None
 
 
-async def test_api_error_is_still_a_result(tool_client):
-    """Expected failures keep the JSON envelope; the MCP-level error flag stays off."""
+async def test_api_error_is_an_error_result_with_hint(tool_client):
+    """A 404 comes back as an ``isError: true`` result whose text carries the hint and
+    whose ``structuredContent`` is the same object as that text — the one place the
+    structured/text equality of the error contract is pinned."""
     client, router = tool_client
     router.get("/projects/123").mock(return_value=Response(404, json={"message": "gone"}))
 
@@ -794,5 +801,7 @@ async def test_api_error_is_still_a_result(tool_client):
         "gitlab_get_project", {"project_id": "123"}, raise_on_error=False
     )
 
-    assert result.is_error is False
-    assert "hint" in json.loads(result.content[0].text)
+    assert result.is_error is True
+    body = json.loads(result.content[0].text)
+    assert "hint" in body
+    assert result.structured_content == body

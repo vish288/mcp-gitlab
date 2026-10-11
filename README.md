@@ -219,6 +219,10 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 - **Transports**: `stdio` (default) and `streamable-http` (recommended for remote). The `sse` (HTTP+SSE) transport still works, but the 2026-07-28 specification deprecates it. The server prints a warning when you use it.
 - **Capabilities**: tools, resources, and prompts. The server uses no roots, sampling, logging, elicitation, or resource subscriptions, so the 2026-07-28 deprecations do not affect it.
 
+### Error results
+
+An expected failure (a 404, a 401, a validation error, or a write blocked by read-only mode) comes back as a tool result with the protocol-level `isError` flag set, so a client can detect and self-correct instead of parsing an `"error"` key out of an otherwise successful result. The body is a JSON object with `error` and, where it helps, `status_code`, `body`, and an actionable `hint`. That same object is returned both as the result's text content and as its `structuredContent`, so the two are always equal; an unexpected bug is also an `isError` result but carries only `TypeName: message` text and no `structuredContent`.
+
 ## Tools (91)
 
 | Category | Count | Tools |
