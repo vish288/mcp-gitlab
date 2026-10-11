@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0] - 2026-10-11
+
+### Features
+- feat!: report expected tool failures with isError (810a208)
+
+### Bug Fixes
+- fix: drop structuredContent from error results (628b0fa)
+
+### Chores
+- chore: gate releases on CI, sign release commits, pin mcp-publisher, deprecate token flags, cap deps (17a565a)
+
+
 ## [0.16.0] - 2026-10-10
 
 ### Bug Fixes
