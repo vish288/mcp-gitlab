@@ -248,15 +248,16 @@ def _err(error: Exception) -> dict[str, Any]:
 def _error_result(detail: dict[str, Any]) -> ToolResult:
     """Return an expected failure as an ``isError: true`` result.
 
-    Text content is byte-identical to the pre-X1 ``_err`` output (same
-    ``json.dumps``); ``structuredContent`` is the same dict un-escaped; the
-    protocol-level ``isError`` flag is set so clients can self-correct instead
-    of parsing ``"error"`` out of a successful result.
+    The error body is the text content (byte-identical to the pre-X1 ``_err``
+    output) and ``isError`` is set; NO ``structuredContent``. The TS MCP SDK
+    (client ``callTool``) validates ``structuredContent`` against the tool's
+    outputSchema even when ``isError`` is true, and the fastmcp-wrapped schema
+    (``{result: string}``) rejects the error dict, turning every expected
+    failure into a protocol error that loses the text and hint.
     """
     text = json.dumps(detail, indent=2, ensure_ascii=False)
     return ToolResult(
         content=[TextContent(type="text", text=text)],
-        structured_content=detail,
         is_error=True,
     )
 
