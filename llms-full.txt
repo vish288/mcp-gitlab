@@ -84,7 +84,7 @@ uvx mcp-gitlab --transport sse --host 127.0.0.1 --port 8000
 uvx mcp-gitlab --auth oauth --transport streamable-http
 
 # CLI overrides for config
-uvx mcp-gitlab --gitlab-url https://gitlab.example.com --gitlab-token glpat-xxx --read-only
+GITLAB_TOKEN=glpat-xxx uvx mcp-gitlab --gitlab-url https://gitlab.example.com --read-only
 ```
 
 `--auth {token,oauth}` selects the authentication mode (`token` default); `oauth` requires `--transport streamable-http`.

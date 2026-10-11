@@ -167,10 +167,12 @@ The server reads the token from the first of `GITLAB_TOKEN`, `GITLAB_PAT`,
 `read_api` for read-only deployments. The server never persists an env token. Stored OAuth
 credentials live in `~/.config/mcp-gitlab/credentials.json`.
 
-CLI flags override env: `--gitlab-url`, `--gitlab-token`, `--read-only`, plus
+CLI flags override env: `--gitlab-url`, `--read-only`, plus
 `--transport {stdio,sse,streamable-http}` with `--host` (default `127.0.0.1`) and `--port`
-(default `8000`); host/port apply only to non-stdio transports. The `mcp-gitlab auth
-login|status|logout` subcommands manage local OAuth sign-in for stdio and never start the server.
+(default `8000`); host/port apply only to non-stdio transports (`--gitlab-token` is deprecated
+and hidden from `--help`; it still works and warns on stderr — set `GITLAB_TOKEN` instead). The
+`mcp-gitlab auth login|status|logout` subcommands manage local OAuth sign-in for stdio and never
+start the server.
 
 ## Release Workflow
 
@@ -183,9 +185,13 @@ gh workflow run release.yml -f bump=major                  # 0.9.0 → 1.0.0
 gh workflow run release.yml -f bump=minor -f dry_run=true  # preview changelog, no push
 ```
 
-1. `release.yml` (workflow_dispatch) — bumps the version in `pyproject.toml`, `llms.txt`,
+1. `release.yml` (workflow_dispatch) — runs the `tests.yml` and `lint.yml` workflows first
+   (`needs: [test, lint]`), then bumps the version in `pyproject.toml`, `llms.txt`,
    `llms-full.txt`, `server.json`, `gemini-extension.json`; regenerates `uv.lock`; prepends a
-   CHANGELOG.md entry; creates the release commit and tag via the GitHub API.
+   CHANGELOG.md entry. The release commit is created with `GITHUB_TOKEN` and no author/committer,
+   so GitHub signs it as `github-actions[bot]` (Verified); the job hard-fails if it is not. The
+   `main` and tag refs are then moved with `RELEASE_PAT` (the Admin ruleset bypass, and the tag
+   push triggers `publish.yml`).
 2. `publish.yml` (triggered by a `v*` tag push) — builds the wheel, publishes to PyPI, creates the
    GitHub Release with auto-generated notes, then publishes to the MCP Registry.
 
@@ -194,6 +200,9 @@ Rules:
 - Never create tags manually — the workflow creates them.
 - Commit messages must follow Conventional Commits (`feat:`, `fix:`, `docs:`, …) for changelog generation.
 - `github-actions[bot]` authors the release commit with the message `chore(release): X.Y.Z`.
+- Release commits are GitHub-verified; PR commits merged via rebase show as unsigned on `main`
+  by GitHub design (rebase rewrites each commit with a new committer and no signature) — PR review
+  plus required checks are the integrity control there.
 
 ## Documentation Freshness (mandatory)
 
