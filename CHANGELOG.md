@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0] - 2026-10-12
+
+### Features
+- feat!: send tool results as structuredContent objects and drop the placeholder outputSchema (f261629)
+
+### Bug Fixes
+- fix: report gitlab_merge_mr_sequence partial failure via isError (927ab34)
+
+### Tests
+- test: harden mcp-gitlab suite — read-only gate, secrets, value sets, hermeticity (289130d)
+
+
 ## [0.17.0] - 2026-10-11
 
 ### Features
