@@ -1081,6 +1081,46 @@ class TestMergeRequestWrites:
         assert len(entry["diff"]) < _MAX_DIFF_CHARS + 200
         assert "diff truncated" in entry["diff"]
 
+    async def test_compare_truncates_large_diff(self, tool_client):
+        """_cap_diffs also guards gitlab_compare, not only mr_changes."""
+        from mcp_gitlab.servers.gitlab import _MAX_DIFF_CHARS
+
+        client, router = tool_client
+        router.get("/projects/123/repository/compare").mock(
+            return_value=Response(
+                200,
+                json={"diffs": [{"new_path": "big.lock", "diff": "+x\n" * 40000}]},
+            )
+        )
+        result = await client.call_tool(
+            "gitlab_compare",
+            {"project_id": "123", "from": "main", "to": "dev"},
+        )
+        entry = _parse(result)["diffs"][0]
+        assert entry["truncated"] is True
+        assert len(entry["diff"]) < _MAX_DIFF_CHARS + 200
+        assert "diff truncated" in entry["diff"]
+
+    async def test_get_commit_truncates_large_diff(self, tool_client):
+        """_cap_diffs also guards gitlab_get_commit's diff payload."""
+        from mcp_gitlab.servers.gitlab import _MAX_DIFF_CHARS
+
+        client, router = tool_client
+        router.get("/projects/123/repository/commits/abc").mock(
+            return_value=Response(200, json={"id": "abc", "title": "t"})
+        )
+        router.get("/projects/123/repository/commits/abc/diff").mock(
+            return_value=Response(200, json=[{"new_path": "big.lock", "diff": "+x\n" * 40000}])
+        )
+        result = await client.call_tool(
+            "gitlab_get_commit",
+            {"project_id": "123", "sha": "abc", "include_diff": True},
+        )
+        entry = _parse(result)["diffs"][0]
+        assert entry["truncated"] is True
+        assert len(entry["diff"]) < _MAX_DIFF_CHARS + 200
+        assert "diff truncated" in entry["diff"]
+
 
 # ═══════════════════════════════════════════════════════
 # MR Notes
@@ -2040,10 +2080,13 @@ class TestOptionalParams:
         result = await client.call_tool(
             "gitlab_merge_mr_sequence",
             {"project_id": "123", "mr_iids": [1]},
+            raise_on_error=False,
         )
+        assert result.is_error is True
         parsed = _parse(result)
         assert "error" in parsed
         assert "not mergeable" in parsed["error"]
+        assert parsed["merged_so_far"] == []
 
     async def test_merge_mr_sequence_reports_scheduled(self, tool_client):
         """R03: an MWPS merge comes back still-open with the flag set — it is
@@ -2444,7 +2487,9 @@ class TestDocstringContracts:
         result = await client.call_tool(
             "gitlab_merge_mr_sequence",
             {"project_id": "123", "mr_iids": [1, 2]},
+            raise_on_error=False,
         )
+        assert result.is_error is True
         parsed = _parse(result)
         assert "error" in parsed
         assert "read-only" in parsed["hint"].lower()
@@ -2465,7 +2510,9 @@ class TestDocstringContracts:
         result = await client.call_tool(
             "gitlab_merge_mr_sequence",
             {"project_id": "123", "mr_iids": [1, 2]},
+            raise_on_error=False,
         )
+        assert result.is_error is True
         parsed = _parse(result)
         assert parsed["merged_so_far"] == [1]
         assert parsed["status_code"] == 404

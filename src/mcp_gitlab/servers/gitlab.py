@@ -1306,8 +1306,9 @@ async def gitlab_merge_mr_sequence(
     whose pipeline is still running is scheduled to auto-merge and reported in
     `scheduled`, not `merged`.
     """
-    # Keeps its own expected-error handler: the envelope must say which MRs
-    # already merged before the failure. Bugs still fall through to tool_result.
+    # Keeps its own expected-error handler so the isError envelope can say which
+    # MRs already merged before the failure (merged_so_far/scheduled). Bugs still
+    # fall through to tool_result.
     merged: list[int] = []
     scheduled: list[int] = []
     mwps = bool(merge_when_pipeline_succeeds)
@@ -1323,7 +1324,7 @@ async def gitlab_merge_mr_sequence(
             if require_mergeable_status:
                 ok, status = await _await_mergeable(client, project_id, iid, mwps=mwps)
                 if not ok:
-                    return _ok(
+                    return _error_result(
                         {
                             "error": f"MR !{iid} is not mergeable (status: {status})",
                             "merged_so_far": merged,
@@ -1343,9 +1344,7 @@ async def gitlab_merge_mr_sequence(
         detail = _err(e)
         detail["merged_so_far"] = merged
         detail["scheduled"] = scheduled
-        # ponytail: stays a successful result carrying the error body for now;
-        # flipping this to isError is an open owner decision (X1 follow-up).
-        return _ok(detail)
+        return _error_result(detail)
 
 
 @mcp.tool(
