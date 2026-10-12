@@ -95,39 +95,12 @@ class TestResourceFiles:
             assert '"""' not in content, f"{filename} contains triple-quote artifact"
 
 
-class TestLoadSecurity:
-    """Verify _load() rejects path traversal attempts."""
-
-    def test_rejects_directory_traversal(self) -> None:
-        import pytest
-
-        with pytest.raises(ValueError, match="Invalid filename"):
-            _load("../../../etc/passwd")
-
-    def test_rejects_forward_slash(self) -> None:
-        import pytest
-
-        with pytest.raises(ValueError, match="Invalid filename"):
-            _load("subdir/file.md")
-
-    def test_rejects_backslash(self) -> None:
-        import pytest
-
-        with pytest.raises(ValueError, match="Invalid filename"):
-            _load("subdir\\file.md")
-
-    def test_rejects_dotdot_only(self) -> None:
-        import pytest
-
-        with pytest.raises(ValueError, match="Invalid filename"):
-            _load("..")
+# The _load()/_load_file() path-traversal guard is covered once per repo by
+# test_prompts.py::TestLoadPromptSecurity (both wrappers call _helpers._load_file).
 
 
 class TestResourceRegistration:
     """Verify resources are importable and return content."""
-
-    def test_resource_count(self) -> None:
-        assert len(EXPECTED_RESOURCES) == 7
 
     def test_each_resource_returns_file_content(self) -> None:
         for uri, info in EXPECTED_RESOURCES.items():

@@ -5,12 +5,11 @@ from __future__ import annotations
 import base64
 import contextlib
 import hashlib
-import multiprocessing
+import os
 import sys
 import threading
 import time
 import urllib.request
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -376,28 +375,25 @@ async def test_concurrent_refresh_hits_gitlab_once(store):
     assert a.access_token == b.access_token == "shared-at"
 
 
-def _hold_lock(path: str, seconds: float, ready: str) -> None:
-    store = CredentialStore(Path(path))
+@pytest.mark.skipif(sys.platform == "win32", reason="flock is POSIX-only")
+def test_locked_is_exclusive(store):
+    """While the store holds its lock, a second non-blocking acquire on the same
+    lock file fails at once with BlockingIOError.
+
+    flock() keys on the open file description, so a separate ``os.open`` of the
+    same file conflicts even within one process — no fork, no sleep, no
+    wall-clock assertion (the old test forked a child and asserted a 0.4 s wait).
+    """
+    import fcntl
+
+    store.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with store.locked():
-        Path(ready).write_text("held")
-        time.sleep(seconds)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="msvcrt lock semantics differ")
-def test_lock_blocks_second_process(store, tmp_path):
-    ready = tmp_path / "ready"
-    ctx = multiprocessing.get_context("fork")
-    child = ctx.Process(target=_hold_lock, args=(str(store.path), 0.5, str(ready)))
-    child.start()
-    try:
-        while not ready.exists():
-            time.sleep(0.01)
-        start = time.monotonic()
-        with store.locked():
-            waited = time.monotonic() - start
-    finally:
-        child.join()
-    assert waited >= 0.4
+        fd = os.open(str(store._lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(fd)
 
 
 # ── build_entry ───────────────────────────────────────────────────

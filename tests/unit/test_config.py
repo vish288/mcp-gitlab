@@ -12,7 +12,7 @@ from mcp_gitlab.config import GitLabConfig
 
 def test_config_from_env():
     env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_TOKEN": "glpat-abc123"}
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.url == "https://gitlab.example.com"
     assert config.token == "glpat-abc123"
@@ -22,7 +22,7 @@ def test_config_from_env():
 
 def test_config_from_env_with_pat():
     env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_PAT": "glpat-xyz"}
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.token == "glpat-xyz"
 
@@ -33,7 +33,7 @@ def test_config_read_only():
         "GITLAB_TOKEN": "x",
         "GITLAB_READ_ONLY": "true",
     }
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.read_only is True
 
@@ -57,14 +57,14 @@ def test_config_validate_missing_token():
 
 def test_config_from_env_with_personal_access_token():
     env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-pat"}
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.token == "glpat-pat"
 
 
 def test_config_from_env_with_api_token():
     env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_API_TOKEN": "glpat-api"}
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.token == "glpat-api"
 
@@ -78,14 +78,14 @@ def test_config_token_priority():
         "GITLAB_PERSONAL_ACCESS_TOKEN": "loser2",
         "GITLAB_API_TOKEN": "loser3",
     }
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.token == "winner"
 
 
 def test_config_url_strips_trailing_slash():
     env = {"GITLAB_URL": "https://gitlab.example.com/", "GITLAB_TOKEN": "x"}
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.url == "https://gitlab.example.com"
 
@@ -156,12 +156,76 @@ def test_token_scopes_property():
     assert GitLabConfig(credentials=_Creds()).token_scopes == ["read_api"]
 
 
+@pytest.mark.parametrize("value", ["true", "1", "yes", "TRUE", "Yes"])
+def test_read_only_truthy_values(value):
+    """GITLAB_READ_ONLY accepts true/1/yes case-insensitively, not only 'true'."""
+    env = {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "x",
+        "GITLAB_READ_ONLY": value,
+    }
+    with patch.dict(os.environ, env, clear=True):
+        assert GitLabConfig.from_env().read_only is True
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", ""])
+def test_read_only_falsy_values(value):
+    env = {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "x",
+        "GITLAB_READ_ONLY": value,
+    }
+    with patch.dict(os.environ, env, clear=True):
+        assert GitLabConfig.from_env().read_only is False
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", "FALSE", "No"])
+def test_ssl_verify_falsy_values(value):
+    """GITLAB_SSL_VERIFY=false/0/no disables verification case-insensitively."""
+    env = {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "x",
+        "GITLAB_SSL_VERIFY": value,
+    }
+    with patch.dict(os.environ, env, clear=True):
+        assert GitLabConfig.from_env().ssl_verify is False
+
+
+def test_ssl_verify_default_and_truthy():
+    with patch.dict(os.environ, {"GITLAB_URL": "u", "GITLAB_TOKEN": "x"}, clear=True):
+        assert GitLabConfig.from_env().ssl_verify is True
+    env = {"GITLAB_URL": "u", "GITLAB_TOKEN": "x", "GITLAB_SSL_VERIFY": "true"}
+    with patch.dict(os.environ, env, clear=True):
+        assert GitLabConfig.from_env().ssl_verify is True
+
+
+def test_timeout_from_env():
+    env = {"GITLAB_URL": "u", "GITLAB_TOKEN": "x", "GITLAB_TIMEOUT": "60"}
+    with patch.dict(os.environ, env, clear=True):
+        assert GitLabConfig.from_env().timeout == 60
+
+
+def test_secrets_absent_from_repr():
+    """The dataclass repr must never leak the token or OAuth credentials."""
+    config = GitLabConfig(
+        url="https://gitlab.example.com",
+        token="glpat-supersecret",  # noqa: S106
+        oauth_client_secret="oauth-secret-value",  # noqa: S106
+        oauth_jwt_key="jwt-signing-key",  # noqa: S106
+    )
+    text = repr(config)
+    assert "glpat-supersecret" not in text
+    assert "oauth-secret-value" not in text
+    assert "jwt-signing-key" not in text
+    assert "https://gitlab.example.com" in text  # non-secret fields still shown
+
+
 def test_oauth_base_url_strips_trailing_slash():
     env = {
         "GITLAB_URL": "https://gitlab.example.com",
         "GITLAB_AUTH": "oauth",
         "GITLAB_OAUTH_BASE_URL": "https://mcp.example.com/",
     }
-    with patch.dict(os.environ, env, clear=False):
+    with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.oauth_base_url == "https://mcp.example.com"

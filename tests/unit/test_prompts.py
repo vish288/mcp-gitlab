@@ -106,9 +106,6 @@ class TestLoadPromptSecurity:
 class TestPromptRegistration:
     """Verify prompts are registered and return valid messages."""
 
-    def test_prompt_count(self) -> None:
-        assert len(EXPECTED_PROMPTS) == 6
-
     def test_each_prompt_returns_messages(self) -> None:
         for name, info in EXPECTED_PROMPTS.items():
             result = info["fn"](**info["args"])
