@@ -114,11 +114,30 @@ def _check_write(ctx: Context) -> None:
             raise GitLabWriteDisabledError(reason="scope")
 
 
-def _ok(data: Any) -> str:
-    return json.dumps(data, indent=2, ensure_ascii=False)
+def _result(data: dict[str, Any], *, is_error: bool = False) -> ToolResult:
+    """Pretty JSON as text (byte-identical to the pre-X2 ``-> str`` output) plus the
+    same object as ``structuredContent``. Tools advertise no ``outputSchema`` (the
+    ``ToolResult`` return annotation suppresses the fastmcp ``{result: string}``
+    wrapper), so nothing validates the object; a typed schema is opt-in per tool via
+    ``output_schema=``.
+
+    Error results carry text only: a strict MCP client (TS SDK 1.x) validates
+    ``structuredContent`` against ``outputSchema`` even when ``isError`` is true, so
+    a non-None structured body would be a hazard the moment a tool gains a schema.
+    """
+    text = json.dumps(data, indent=2, ensure_ascii=False)
+    return ToolResult(
+        content=[TextContent(type="text", text=text)],
+        structured_content=None if is_error else data,
+        is_error=is_error,
+    )
 
 
-def _paginated(items: list, next_page: int | None = None) -> str:
+def _ok(data: dict[str, Any]) -> ToolResult:
+    return _result(data)
+
+
+def _paginated(items: list, next_page: int | None = None) -> ToolResult:
     """Wrap a list response with its real pagination state.
 
     ``count`` is the size of *this* page, never a grand total. ``next_page``
@@ -129,15 +148,13 @@ def _paginated(items: list, next_page: int | None = None) -> str:
     capped list was indistinguishable from a complete one and there was no way
     to request the rest.
     """
-    return json.dumps(
+    return _result(
         {
             "items": items,
             "count": len(items),
             "has_more": next_page is not None,
             "next_page": next_page,
-        },
-        indent=2,
-        ensure_ascii=False,
+        }
     )
 
 
@@ -255,11 +272,7 @@ def _error_result(detail: dict[str, Any]) -> ToolResult:
     (``{result: string}``) rejects the error dict, turning every expected
     failure into a protocol error that loses the text and hint.
     """
-    text = json.dumps(detail, indent=2, ensure_ascii=False)
-    return ToolResult(
-        content=[TextContent(type="text", text=text)],
-        is_error=True,
-    )
+    return _result(detail, is_error=True)
 
 
 def _params(**kw: Any) -> dict[str, Any]:
@@ -332,7 +345,7 @@ def _variable_params(
     )
 
 
-_Tool = Callable[..., Awaitable[str | ToolResult]]
+_Tool = Callable[..., Awaitable[ToolResult]]
 
 
 def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
@@ -351,7 +364,7 @@ def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
 
     def wrap(f: _Tool) -> _Tool:
         @functools.wraps(f)
-        async def inner(ctx: Context, *args: Any, **kwargs: Any) -> str | ToolResult:
+        async def inner(ctx: Context, *args: Any, **kwargs: Any) -> ToolResult:
             try:
                 if write:
                     _check_write(ctx)
@@ -389,7 +402,7 @@ async def gitlab_get_project(
             min_length=1,
         ),
     ],
-) -> str:
+) -> ToolResult:
     """Get a project's details.
 
     Returns id, name, path_with_namespace, visibility, default_branch, web_url, description.
@@ -411,7 +424,7 @@ async def gitlab_create_project(
     visibility: Annotated[str | None, Field(description="private, internal, or public")] = None,
     initialize_with_readme: Annotated[bool | None, Field(description="Create with README")] = None,
     default_branch: Annotated[str | None, Field(description="Default branch name")] = None,
-) -> str:
+) -> ToolResult:
     """Create a new project.
 
     Returns the new project's id, name, path_with_namespace, web_url, and default settings.
@@ -440,7 +453,7 @@ async def gitlab_create_project(
 async def gitlab_delete_project(
     ctx: Context,
     project_id: ProjectId,
-) -> str:
+) -> ToolResult:
     """Permanently delete a project. Irreversible.
 
     Returns a {status: deleted, project_id} confirmation.
@@ -470,7 +483,7 @@ async def gitlab_update_project_merge_settings(
         str | None, Field(description="never, always, default_on, or default_off")
     ] = None,
     merge_method: Annotated[str | None, Field(description="merge, rebase_merge, or ff")] = None,
-) -> str:
+) -> ToolResult:
     """Update merge-related project settings (squash, fast-forward, pipeline gating).
 
     Returns the updated project object.
@@ -502,7 +515,7 @@ async def gitlab_update_project_merge_settings(
 async def gitlab_get_project_approvals(
     ctx: Context,
     project_id: ProjectId,
-) -> str:
+) -> ToolResult:
     """Get project-level approval configuration.
 
     Returns approvals_before_merge, reset_approvals_on_push, and self-approval rules.
@@ -533,7 +546,7 @@ async def gitlab_update_project_approvals(
     merge_requests_disable_committers_approval: Annotated[
         bool | None, Field(description="Disable committer approval")
     ] = None,
-) -> str:
+) -> ToolResult:
     """Update project-level approval settings. Returns the updated approval configuration."""
     return _ok(
         await _get_client(ctx).post(
@@ -557,7 +570,7 @@ async def gitlab_update_project_approvals(
 async def gitlab_list_project_approval_rules(
     ctx: Context,
     project_id: ProjectId,
-) -> str:
+) -> ToolResult:
     """List project-level approval rules.
 
     Returns rules with id, name, approvals_required, and eligible approvers/groups.
@@ -578,7 +591,7 @@ async def gitlab_create_project_approval_rule(
     approvals_required: Annotated[int, Field(description="Number of approvals required", ge=0)],
     user_ids: Annotated[list[int] | None, Field(description="User IDs for the rule")] = None,
     group_ids: Annotated[list[int] | None, Field(description="Group IDs for the rule")] = None,
-) -> str:
+) -> ToolResult:
     """Create a project-level approval rule.
 
     Returns the new rule's id, name, approvals_required, and target users/groups.
@@ -611,7 +624,7 @@ async def gitlab_update_project_approval_rule(
     ] = None,
     user_ids: Annotated[list[int] | None, Field(description="User IDs for the rule")] = None,
     group_ids: Annotated[list[int] | None, Field(description="Group IDs for the rule")] = None,
-) -> str:
+) -> ToolResult:
     """Update a project-level approval rule. Returns the updated rule object."""
     return _ok(
         await _get_client(ctx).put(
@@ -635,7 +648,7 @@ async def gitlab_delete_project_approval_rule(
     ctx: Context,
     project_id: ProjectId,
     rule_id: Annotated[int, Field(description="Approval rule ID")],
-) -> str:
+) -> ToolResult:
     """Delete a project-level approval rule. Returns a {status: deleted, rule_id} confirmation."""
     await _get_client(ctx).delete(f"/projects/{_enc(project_id)}/approval_rules/{rule_id}")
     return _ok({"status": "deleted", "rule_id": rule_id})
@@ -655,7 +668,7 @@ async def gitlab_list_mr_approval_rules(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """List approval rules attached to a merge request.
 
     Returns rules with id, name, approvals_required, and approvers.
@@ -679,7 +692,7 @@ async def gitlab_create_mr_approval_rule(
     approvals_required: Annotated[int, Field(description="Number of approvals required", ge=0)],
     user_ids: Annotated[list[int] | None, Field(description="User IDs")] = None,
     group_ids: Annotated[list[int] | None, Field(description="Group IDs")] = None,
-) -> str:
+) -> ToolResult:
     """Add an approval rule to a merge request.
 
     Returns the new rule's id, name, approvals_required, and approvers.
@@ -711,7 +724,7 @@ async def gitlab_update_mr_approval_rule(
     approvals_required: Annotated[int | None, Field(description="Approvals required")] = None,
     user_ids: Annotated[list[int] | None, Field(description="User IDs")] = None,
     group_ids: Annotated[list[int] | None, Field(description="Group IDs")] = None,
-) -> str:
+) -> ToolResult:
     """Update a merge-request-level approval rule. Returns the updated rule object."""
     return _ok(
         await _get_client(ctx).put(
@@ -736,7 +749,7 @@ async def gitlab_delete_mr_approval_rule(
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     rule_id: Annotated[int, Field(description="Approval rule ID")],
-) -> str:
+) -> ToolResult:
     """Delete an approval rule from a merge request.
 
     Returns a {status: deleted, rule_id} confirmation.
@@ -762,7 +775,7 @@ async def gitlab_list_groups(
     search: Annotated[str | None, Field(description="Search by name")] = None,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List groups visible to the caller.
 
     Returns id, name, full_path, parent_id, visibility, web_url per group.
@@ -781,7 +794,7 @@ async def gitlab_list_groups(
 async def gitlab_get_group(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID or URL-encoded path", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Get a group's details.
 
     Returns id, name, full_path, visibility, web_url, and subgroup/membership counts.
@@ -799,7 +812,7 @@ async def gitlab_share_project_with_group(
     project_id: ProjectId,
     group_id: Annotated[int, Field(description="Group ID to share with")],
     access_level: AccessLevel,
-) -> str:
+) -> ToolResult:
     """Grant a group access to a project at the given access level.
 
     Returns a {status: shared, project_id, group_id} confirmation.
@@ -820,7 +833,7 @@ async def gitlab_unshare_project_with_group(
     ctx: Context,
     project_id: ProjectId,
     group_id: Annotated[int, Field(description="Group ID to unshare")],
-) -> str:
+) -> ToolResult:
     """Revoke a group's access to a project.
 
     Returns a {status: unshared, project_id, group_id} confirmation.
@@ -839,7 +852,7 @@ async def gitlab_share_group_with_group(
     target_group_id: Annotated[str, Field(description="Target group ID or path")],
     source_group_id: Annotated[int, Field(description="Source group ID to share")],
     access_level: AccessLevel,
-) -> str:
+) -> ToolResult:
     """Grant one group access to another group at the given access level.
 
     Returns the share record.
@@ -860,7 +873,7 @@ async def gitlab_unshare_group_with_group(
     ctx: Context,
     target_group_id: Annotated[str, Field(description="Target group ID or path")],
     source_group_id: Annotated[int, Field(description="Source group ID to remove")],
-) -> str:
+) -> ToolResult:
     """Revoke a group-to-group share. Returns a {status: unshared} confirmation."""
     await _get_client(ctx).delete(f"/groups/{_enc(target_group_id)}/share/{source_group_id}")
     return _ok({"status": "unshared"})
@@ -882,7 +895,7 @@ async def gitlab_list_branches(
     search: Annotated[str | None, Field(description="Filter by branch name")] = None,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List branches in a project.
 
     Returns name, commit sha, protected, default, and merged flags per branch.
@@ -904,7 +917,7 @@ async def gitlab_create_branch(
     project_id: ProjectId,
     branch_name: Annotated[str, Field(description="New branch name", min_length=1)],
     ref: Annotated[str, Field(description="Source branch or commit SHA", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Create a branch from an existing ref.
 
     Returns the new branch's name, commit sha, and protection status.
@@ -926,7 +939,7 @@ async def gitlab_delete_branch(
     ctx: Context,
     project_id: ProjectId,
     branch_name: Annotated[str, Field(description="Branch name to delete", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Delete a branch from a project. Returns a {status: deleted, branch} confirmation."""
     await _get_client(ctx).delete(
         f"/projects/{_enc(project_id)}/repository/branches/{quote(branch_name, safe='')}"
@@ -953,7 +966,7 @@ async def gitlab_list_commits(
     path: Annotated[str | None, Field(description="File path filter")] = None,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List commits on a ref (branch, tag, or sha).
 
     Returns id, short_id, title, author_name, authored_date, web_url per commit.
@@ -980,7 +993,7 @@ async def gitlab_get_commit(
     project_id: ProjectId,
     sha: Annotated[str, Field(description="Commit SHA", min_length=1)],
     include_diff: Annotated[bool, Field(description="Include file diffs")] = False,
-) -> str:
+) -> ToolResult:
     """Get a single commit, optionally with diff.
 
     Returns id, short_id, title, message, author, committed_date, web_url
@@ -1014,7 +1027,7 @@ async def gitlab_create_commit(
         ),
     ],
     start_branch: Annotated[str | None, Field(description="Branch to start from")] = None,
-) -> str:
+) -> ToolResult:
     """Create a commit applying create/update/delete/move/chmod file actions in one call.
 
     Returns the new commit's id, short_id, title, and parent_ids.
@@ -1044,7 +1057,7 @@ async def gitlab_compare(
         str, Field(description="Source branch/tag/SHA", alias="from", min_length=1)
     ],
     to_ref: Annotated[str, Field(description="Target branch/tag/SHA", alias="to", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Compare two refs (branch, tag, or sha).
 
     Returns commits, diffs, compare_timeout, and compare_same_ref flags. A file
@@ -1080,7 +1093,7 @@ async def gitlab_list_mrs(
     labels: Annotated[str | None, Field(description="Comma-separated labels")] = None,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List merge requests in a project, filterable by state/labels/author.
 
     Returns iid, title, state, source_branch, target_branch, author, web_url per MR.
@@ -1113,7 +1126,7 @@ async def gitlab_get_mr(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """Get merge request details.
 
     Returns title, state, source/target branches, author, diff_refs, and merge status.
@@ -1139,7 +1152,7 @@ async def gitlab_create_mr(
         bool | None, Field(description="Delete source branch on merge")
     ] = None,
     labels: Annotated[str | None, Field(description="Comma-separated labels")] = None,
-) -> str:
+) -> ToolResult:
     """Create a merge request.
 
     Returns the new MR's iid, title, state, source_branch, target_branch, and web_url.
@@ -1180,7 +1193,7 @@ async def gitlab_update_mr(
     ] = None,
     draft: Annotated[bool | None, Field(description="Set draft status")] = None,
     state_event: Annotated[str | None, Field(description="close or reopen")] = None,
-) -> str:
+) -> ToolResult:
     """Update an MR's title, description, target branch, labels, squash/draft flags, or state.
 
     Returns the updated MR object.
@@ -1224,7 +1237,7 @@ async def gitlab_merge_mr(
     merge_when_pipeline_succeeds: Annotated[
         bool | None, Field(description="Merge when pipeline passes")
     ] = None,
-) -> str:
+) -> ToolResult:
     """Merge a merge request, optionally only when the pipeline succeeds.
 
     Returns the merged MR with state=merged and merge_commit_sha.
@@ -1297,7 +1310,7 @@ async def gitlab_merge_mr_sequence(
     require_mergeable_status: Annotated[
         bool, Field(description="Check mergeable status first")
     ] = True,
-) -> str:
+) -> ToolResult:
     """Merge several MRs sequentially, stopping at the first failure.
 
     Returns {status, merged, scheduled, merged_so_far}. Merging an MR updates
@@ -1357,7 +1370,7 @@ async def gitlab_rebase_mr(
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     skip_ci: Annotated[bool, Field(description="Skip CI pipeline for rebase")] = False,
-) -> str:
+) -> ToolResult:
     """Trigger a server-side rebase of an MR onto its target branch.
 
     Returns {rebase_in_progress: true}.
@@ -1381,7 +1394,7 @@ async def gitlab_mr_changes(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """Get the file diffs of a merge request, one page at a time.
 
     Returns {items, count, has_more, next_page}; each item has old_path,
@@ -1416,7 +1429,7 @@ async def gitlab_list_mr_notes(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     include_system: Annotated[bool, Field(description="Include system-generated notes")] = False,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List notes (comments) on a merge request.
 
     Returns id, body, author, created_at, and system flag per note.
@@ -1448,7 +1461,7 @@ async def gitlab_add_mr_note(
     internal: Annotated[
         bool, Field(description="Internal note (not visible to non-members)")
     ] = False,
-) -> str:
+) -> ToolResult:
     """Post a new comment on a merge request.
 
     Returns the new note's id, body, author, and created_at.
@@ -1473,7 +1486,7 @@ async def gitlab_delete_mr_note(
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID to delete")],
-) -> str:
+) -> ToolResult:
     """Delete a comment from a merge request. Returns a {status: deleted, note_id} confirmation."""
     await _get_client(ctx).delete(
         f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes/{note_id}"
@@ -1492,7 +1505,7 @@ async def gitlab_update_mr_note(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID to update")],
     body: Annotated[str, Field(description="New note body", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Edit an existing MR comment's body.
 
     Returns the updated note's id, body, author, and updated_at.
@@ -1516,7 +1529,7 @@ async def gitlab_award_emoji(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID")],
     emoji: Annotated[str, Field(description="Emoji name (e.g. thumbsup, 100, eyes)", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Add an emoji reaction to an MR note. Returns the new award's id, name, and user."""
     return _ok(
         await _get_client(ctx).post(
@@ -1537,7 +1550,7 @@ async def gitlab_remove_emoji(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     note_id: Annotated[int, Field(description="Note ID")],
     award_id: Annotated[int, Field(description="Award emoji ID to remove")],
-) -> str:
+) -> ToolResult:
     """Remove an emoji reaction from an MR note. Returns a {status: removed} confirmation."""
     await _get_client(ctx).delete(
         f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/notes/{note_id}/award_emoji/{award_id}"
@@ -1560,7 +1573,7 @@ async def gitlab_list_mr_discussions(
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List discussions on a merge request.
 
     Returns discussion threads with notes, excluding system-only threads.
@@ -1605,7 +1618,7 @@ async def gitlab_create_mr_discussion(
     line_range_type: Annotated[
         str | None, Field(description="'new' or 'old' for line range")
     ] = None,
-) -> str:
+) -> ToolResult:
     """Create a discussion on a merge request.
 
     For inline comments, provide diff_refs and line info.
@@ -1645,7 +1658,7 @@ async def gitlab_reply_to_discussion(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     discussion_id: Annotated[str, Field(description="Discussion ID", min_length=1)],
     body: Annotated[str, Field(description="Reply body (markdown)", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Reply to an existing MR discussion thread.
 
     Returns the new note's id, body, author, and created_at.
@@ -1670,7 +1683,7 @@ async def gitlab_resolve_discussion(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     discussion_id: Annotated[str, Field(description="Discussion ID", min_length=1)],
     resolved: Annotated[bool, Field(description="True to resolve, False to unresolve")],
-) -> str:
+) -> ToolResult:
     """Mark an MR discussion as resolved or unresolved.
 
     Returns the updated discussion with its resolved flag and notes.
@@ -1727,7 +1740,7 @@ async def gitlab_get_file(
     end_line: Annotated[
         int | None, Field(description="Last line to return (1-based, inclusive)", ge=1)
     ] = None,
-) -> str:
+) -> ToolResult:
     """Get a file's decoded text content at a ref, with metadata.
 
     Returns file_path, ref, size, encoding, blob_id, last_commit_id, total_lines, and content.
@@ -1797,7 +1810,7 @@ async def gitlab_list_tree(
     ] = None,
     recursive: Annotated[bool, Field(description="Recurse into subdirectories")] = False,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List repository tree entries (files and directories) at a ref.
 
     Returns items with id, name, type ('blob' or 'tree'), path, and mode, plus pagination state.
@@ -1823,7 +1836,7 @@ async def gitlab_search_code(
         Field(description="Ref to search; ignored unless the instance has Advanced Search"),
     ] = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """Search a project's code (scope=blobs). Returns items with path, ref, startline, and data.
 
     Results depend on the instance's search backend: without Advanced Search only the default
@@ -1866,7 +1879,7 @@ async def gitlab_get_blame(
     end_line: Annotated[
         int | None, Field(description="Last line of the blame range (1-based)", ge=1)
     ] = None,
-) -> str:
+) -> ToolResult:
     """Get git blame for a file at a ref, optionally limited to a line range.
 
     Returns slim ranges: each has commit_id, author, date, message (first line), and lines.
@@ -1927,7 +1940,7 @@ async def gitlab_create_draft_note(
     line_range_type: Annotated[
         str | None, Field(description="'new' or 'old' for line range")
     ] = None,
-) -> str:
+) -> ToolResult:
     """Create an unpublished draft note on a merge request ("Submit review" style).
 
     Returns the new draft note. For an inline comment give new_path plus new_line/old_line; the
@@ -1977,7 +1990,7 @@ async def gitlab_list_draft_notes(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """List the current user's unpublished draft notes on a merge request.
 
     Returns each draft's id, note body, and position (if inline).
@@ -1997,7 +2010,7 @@ async def gitlab_publish_draft_notes(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """Publish ALL pending draft notes on a merge request at once, like clicking "Submit review".
 
     Returns a {status: published} confirmation. Idempotent: a no-op when no drafts remain.
@@ -2018,7 +2031,7 @@ async def gitlab_delete_draft_note(
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     draft_note_id: Annotated[int, Field(description="Draft note ID to delete")],
-) -> str:
+) -> ToolResult:
     """Delete a single unpublished draft note.
 
     Returns a {status: deleted, draft_note_id} confirmation.
@@ -2047,7 +2060,7 @@ async def gitlab_approve_mr(
         str | None,
         Field(description="Expected HEAD SHA — returns 409 if mismatched (safety check)"),
     ] = None,
-) -> str:
+) -> ToolResult:
     """Approve a merge request, optionally gating on a sha so HEAD hasn't changed.
 
     Returns the updated approval state (approved_by, approvals_left).
@@ -2071,7 +2084,7 @@ async def gitlab_unapprove_mr(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """Remove the current user's approval from a merge request.
 
     Returns the updated approval state.
@@ -2092,7 +2105,7 @@ async def gitlab_get_mr_approvals(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """Get the approval state of a merge request.
 
     Returns approved_by, approvals_required, approvals_left, and matching rules.
@@ -2115,7 +2128,7 @@ async def gitlab_list_mr_pipelines(
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List pipelines associated with a merge request.
 
     Returns id, status, ref, sha, source, web_url per pipeline.
@@ -2136,7 +2149,7 @@ async def gitlab_list_mr_commits(
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List commits included in a merge request.
 
     Returns id, short_id, title, author_name, authored_date per commit.
@@ -2156,7 +2169,7 @@ async def gitlab_subscribe_mr(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """Subscribe the authenticated user to notifications for a merge request.
 
     Returns the updated MR object.
@@ -2177,7 +2190,7 @@ async def gitlab_unsubscribe_mr(
     ctx: Context,
     project_id: ProjectId,
     mr_iid: Annotated[int, Field(description="Merge request IID")],
-) -> str:
+) -> ToolResult:
     """Unsubscribe the authenticated user from notifications for a merge request.
 
     Returns the updated MR object.
@@ -2213,7 +2226,7 @@ async def gitlab_list_pipelines(
     per_page: PerPage = None,
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List pipelines for a project. Returns id, status, ref, source, timing, web_url."""
     data, next_page = await _get_client(ctx).get_paged(
         f"/projects/{_enc(project_id)}/pipelines",
@@ -2236,7 +2249,7 @@ async def gitlab_get_pipeline(
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
     include_jobs: Annotated[bool, Field(description="Include pipeline jobs")] = False,
     slim: Annotated[bool, Field(description="Strip verbose fields from response")] = True,
-) -> str:
+) -> ToolResult:
     """Get pipeline details, optionally with jobs.
 
     Returns id, status, ref, timing, web_url.
@@ -2266,7 +2279,7 @@ async def gitlab_create_pipeline(
         list[dict[str, str]] | None,
         Field(description="Pipeline variables: [{key: str, value: str, variable_type?: str}]"),
     ] = None,
-) -> str:
+) -> ToolResult:
     """Trigger a new pipeline on the given ref, optionally with variables.
 
     Returns the new pipeline's id, status, ref, sha, source, web_url.
@@ -2287,7 +2300,7 @@ async def gitlab_retry_pipeline(
     ctx: Context,
     project_id: ProjectId,
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
-) -> str:
+) -> ToolResult:
     """Retry all failed or canceled jobs in a pipeline.
 
     Returns the updated pipeline with status and timing.
@@ -2311,7 +2324,7 @@ async def gitlab_cancel_pipeline(
     ctx: Context,
     project_id: ProjectId,
     pipeline_id: Annotated[int, Field(description="Pipeline ID")],
-) -> str:
+) -> ToolResult:
     """Cancel a running pipeline. Returns the updated pipeline with status=canceled."""
     return _ok(
         _slim(
@@ -2337,7 +2350,7 @@ async def gitlab_retry_job(
     ctx: Context,
     project_id: ProjectId,
     job_id: Annotated[int, Field(description="Job ID")],
-) -> str:
+) -> ToolResult:
     """Retry a failed job. Returns the new job's id, status, name, stage, and web_url."""
     result = await _get_client(ctx).post(f"/projects/{_enc(project_id)}/jobs/{job_id}/retry")
     return _ok(_slim(result, _JOB_KEYS))
@@ -2356,7 +2369,7 @@ async def gitlab_play_job(
         list[dict[str, str]] | None,
         Field(description="Job variables: [{key: str, value: str}]"),
     ] = None,
-) -> str:
+) -> ToolResult:
     """Trigger a manual job, optionally with job variables.
 
     Returns the started job's id, status, name, and web_url.
@@ -2383,7 +2396,7 @@ async def gitlab_cancel_job(
     ctx: Context,
     project_id: ProjectId,
     job_id: Annotated[int, Field(description="Job ID")],
-) -> str:
+) -> ToolResult:
     """Cancel a running job. Returns the updated job with status=canceled."""
     result = await _get_client(ctx).post(f"/projects/{_enc(project_id)}/jobs/{job_id}/cancel")
     return _ok(_slim(result, _JOB_KEYS))
@@ -2402,7 +2415,7 @@ async def gitlab_get_job_log(
         int,
         Field(description="Lines to return from the end of the log; 0 returns the whole log", ge=0),
     ] = 200,
-) -> str:
+) -> ToolResult:
     """Get a job's log trace, truncated to the last tail_lines lines (default 200).
 
     Returns {log, total_lines, shown_lines}. Pass tail_lines=0 for the whole log.
@@ -2440,7 +2453,7 @@ async def gitlab_list_tags(
     sort: Annotated[str | None, Field(description="asc or desc")] = None,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List repository tags.
 
     Returns name, message, target sha, commit summary, and any attached release per tag.
@@ -2464,7 +2477,7 @@ async def gitlab_get_tag(
     ctx: Context,
     project_id: ProjectId,
     tag_name: Annotated[str, Field(description="Tag name", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Get a tag's details. Returns name, message, target commit, and any attached release."""
     return _ok(
         await _get_client(ctx).get(
@@ -2484,7 +2497,7 @@ async def gitlab_create_tag(
     tag_name: Annotated[str, Field(description="Tag name", min_length=1)],
     ref: Annotated[str, Field(description="Branch or commit SHA to tag", min_length=1)],
     message: Annotated[str | None, Field(description="Annotated tag message")] = None,
-) -> str:
+) -> ToolResult:
     """Create a tag on the given ref, optionally with a message.
 
     Returns the new tag's name, message, target, and commit.
@@ -2506,7 +2519,7 @@ async def gitlab_delete_tag(
     ctx: Context,
     project_id: ProjectId,
     tag_name: Annotated[str, Field(description="Tag name to delete", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Delete a tag. Returns a {status: deleted, tag} confirmation."""
     await _get_client(ctx).delete(
         f"/projects/{_enc(project_id)}/repository/tags/{quote(tag_name, safe='')}"
@@ -2529,7 +2542,7 @@ async def gitlab_list_releases(
     project_id: ProjectId,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List project releases.
 
     Returns tag_name, name, description, created_at, released_at, and assets per release.
@@ -2550,7 +2563,7 @@ async def gitlab_get_release(
     ctx: Context,
     project_id: ProjectId,
     tag_name: Annotated[str, Field(description="Tag name of the release", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Get a release by tag.
 
     Returns name, description, tag_name, created_at, and assets (links, sources).
@@ -2579,7 +2592,7 @@ async def gitlab_create_release(
         list[dict[str, str]] | None,
         Field(description="Asset links: [{name, url, link_type?}]"),
     ] = None,
-) -> str:
+) -> ToolResult:
     """Create a release tied to a tag (or a new ref).
 
     Returns the new release with tag_name, name, description, and assets.
@@ -2607,7 +2620,7 @@ async def gitlab_update_release(
     name: Annotated[str | None, Field(description="New release name")] = None,
     description: Annotated[str | None, Field(description="New release description")] = None,
     released_at: Annotated[str | None, Field(description="New release date (ISO 8601)")] = None,
-) -> str:
+) -> ToolResult:
     """Update a release's name, description, or release date. Returns the updated release."""
     return _ok(
         await _get_client(ctx).put(
@@ -2626,7 +2639,7 @@ async def gitlab_delete_release(
     ctx: Context,
     project_id: ProjectId,
     tag_name: Annotated[str, Field(description="Tag name of the release", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Delete a release (the underlying tag is preserved).
 
     Returns a {status: deleted, tag_name} confirmation.
@@ -2651,7 +2664,7 @@ async def gitlab_list_variables(
     ctx: Context,
     project_id: ProjectId,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List project CI/CD variables.
 
     Returns key, value (shown as '***MASKED***' when masked), protected, masked,
@@ -2686,7 +2699,7 @@ async def gitlab_create_variable(
         str | None, Field(description="Environment scope (default: *)")
     ] = None,
     description: Annotated[str | None, Field(description="Variable description")] = None,
-) -> str:
+) -> ToolResult:
     """Create a project CI/CD variable.
 
     Returns the new variable's key, value (masked if applicable), protected, masked,
@@ -2728,7 +2741,7 @@ async def gitlab_update_variable(
         Field(description="Environment scope filter — selects which scoped variable to update"),
     ] = None,
     description: Annotated[str | None, Field(description="Variable description")] = None,
-) -> str:
+) -> ToolResult:
     """Update a project CI/CD variable. Returns the updated variable object.
 
     environment_scope selects which scoped variable to update; it does not change the scope.
@@ -2759,7 +2772,7 @@ async def gitlab_delete_variable(
     project_id: ProjectId,
     key: Annotated[str, Field(description="Variable key", min_length=1)],
     environment_scope: Annotated[str | None, Field(description="Environment scope filter")] = None,
-) -> str:
+) -> ToolResult:
     """Delete a project CI/CD variable. Returns a {status: deleted, key} confirmation."""
     query = {"filter[environment_scope]": environment_scope} if environment_scope else None
     await _get_client(ctx).delete(
@@ -2782,7 +2795,7 @@ async def gitlab_list_group_variables(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List group CI/CD variables.
 
     Returns key, value (shown as '***MASKED***' when masked), protected, masked,
@@ -2813,7 +2826,7 @@ async def gitlab_create_group_variable(
     raw: Annotated[bool | None, Field(description="Do not expand references")] = None,
     environment_scope: Annotated[str | None, Field(description="Environment scope")] = None,
     description: Annotated[str | None, Field(description="Variable description")] = None,
-) -> str:
+) -> ToolResult:
     """Create a group CI/CD variable.
 
     Returns the new variable's key, value (masked if applicable), protected, masked,
@@ -2851,7 +2864,7 @@ async def gitlab_update_group_variable(
     masked: Annotated[bool | None, Field(description="Mask in logs")] = None,
     raw: Annotated[bool | None, Field(description="Do not expand references")] = None,
     description: Annotated[str | None, Field(description="Variable description")] = None,
-) -> str:
+) -> ToolResult:
     """Update a group CI/CD variable. Returns the updated variable object."""
     return _ok(
         await _get_client(ctx).put(
@@ -2877,7 +2890,7 @@ async def gitlab_delete_group_variable(
     ctx: Context,
     group_id: Annotated[str, Field(description="Group ID, path, or full GitLab URL", min_length=1)],
     key: Annotated[str, Field(description="Variable key", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Delete a group CI/CD variable. Returns a {status: deleted, key} confirmation."""
     await _get_client(ctx).delete(f"/groups/{_enc(group_id)}/variables/{quote(key, safe='')}")
     return _ok({"status": "deleted", "key": key})
@@ -2902,7 +2915,7 @@ async def gitlab_list_issues(
     assignee_id: Annotated[int | None, Field(description="Filter by assignee ID")] = None,
     per_page: PerPage = None,
     page: Annotated[int, Field(description="Page number (follow next_page to continue)", ge=1)] = 1,
-) -> str:
+) -> ToolResult:
     """List issues in a project, filterable by state/labels/assignee.
 
     Returns iid, title, state, labels, author, web_url per issue.
@@ -2933,7 +2946,7 @@ async def gitlab_get_issue(
     ctx: Context,
     project_id: ProjectId,
     issue_iid: Annotated[int, Field(description="Issue IID")],
-) -> str:
+) -> ToolResult:
     """Get a single issue.
 
     Returns iid, title, description, state, labels, assignees, author, milestone, due_date, web_url.
@@ -2956,7 +2969,7 @@ async def gitlab_create_issue(
     milestone_id: Annotated[int | None, Field(description="Milestone ID")] = None,
     confidential: Annotated[bool | None, Field(description="Mark as confidential")] = None,
     weight: Annotated[int | None, Field(description="Issue weight")] = None,
-) -> str:
+) -> ToolResult:
     """Create a new issue.
 
     Returns the new issue's iid, title, state, labels, assignees, author, web_url.
@@ -2992,7 +3005,7 @@ async def gitlab_update_issue(
     assignee_ids: Annotated[list[int] | None, Field(description="Assignee user IDs")] = None,
     state_event: Annotated[str | None, Field(description="close or reopen")] = None,
     weight: Annotated[int | None, Field(description="Issue weight")] = None,
-) -> str:
+) -> ToolResult:
     """Update an issue's title, description, labels, assignees, weight, or state event.
 
     Returns the updated issue object.
@@ -3022,7 +3035,7 @@ async def gitlab_add_issue_comment(
     project_id: ProjectId,
     issue_iid: Annotated[int, Field(description="Issue IID")],
     body: Annotated[str, Field(description="Comment body (markdown)", min_length=1)],
-) -> str:
+) -> ToolResult:
     """Post a comment on an issue. Returns the new note's id, body, author, and created_at."""
     return _ok(
         await _get_client(ctx).post(

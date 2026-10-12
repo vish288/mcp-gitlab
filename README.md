@@ -223,6 +223,8 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 
 An expected failure (a 404, a 401, a validation error, or a write blocked by read-only mode) comes back as a tool result with the protocol-level `isError` flag set, so a client can detect and self-correct instead of parsing an `"error"` key out of an otherwise successful result. The body is a JSON object with `error` and, where it helps, `status_code`, `body`, and an actionable `hint`. That object is the result's text content; the error sets no `structuredContent`, because a strict client (the TypeScript MCP SDK) validates `structuredContent` against the tool's output schema even on an `isError` result and the schema would reject the error body. An unexpected bug is also an `isError` result but carries only `TypeName: message` text, likewise with no `structuredContent`.
 
+A successful result carries the response as a JSON object in both the pretty text content and `structuredContent` (the object itself, not the old `{"result": "<json string>"}` wrapper a strict client would otherwise reject). Tools advertise no `outputSchema`: upstream GitLab fields pass through untyped, so a new API field never breaks a schema; a typed schema is opt-in per tool via `output_schema=` when a client needs one.
+
 ## Tools (91)
 
 | Category | Count | Tools |
