@@ -741,7 +741,13 @@ async def test_request_shape(tool_client, row):
     payload: list | dict = [] if name.startswith("gitlab_list_") else {}
     route = router.request(method, path).mock(return_value=Response(200, json=payload))
 
-    parsed = _parse(await client.call_tool(name, args))
+    result = await client.call_tool(name, args)
+    # X2: a successful result is not an error and carries the JSON object itself as
+    # structuredContent (not the old {"result": "<json string>"} wrapper), byte-for-byte
+    # the same object the pretty text decodes to.
+    assert result.is_error is False
+    assert result.structured_content == json.loads(result.content[0].text)
+    parsed = _parse(result)
 
     assert "error" not in parsed
     req = route.calls.last.request
@@ -850,3 +856,51 @@ async def test_error_result_passes_strict_client(tool_client, row):
 
     if result.structured_content is not None and schema is not None:
         jsonschema.validate(result.structured_content, schema)
+
+
+async def test_no_tool_advertises_a_wrapped_schema(tool_client):
+    """X2: no tool may advertise the fastmcp ``{result: string}`` wrapper schema.
+
+    Shape C returns ``ToolResult`` with no ``outputSchema``; a tool may later opt
+    into an explicit object schema via ``output_schema=``. Either is fine; the
+    ``-> str`` wrapper (``x-fastmcp-wrap-result``) is not. When a schema is present
+    its success row's ``structuredContent`` must validate against it.
+
+    Fails on pre-X2 code: every tool returns ``-> str`` and so carries the wrapper.
+    """
+    client, _router = tool_client
+    for t in await client.list_tools():
+        schema = t.output_schema
+        assert schema is None or (
+            "x-fastmcp-wrap-result" not in schema and schema.get("type") == "object"
+        ), f"{t.name} still advertises a wrapped/invalid outputSchema: {schema}"
+
+
+@pytest.mark.parametrize("row", ROWS, ids=[r[0] for r in ROWS])
+async def test_schema_validates_structured_content(tool_client, row):
+    """Forward-compatible: if a tool advertises an explicit object schema, its
+    successful ``structuredContent`` must validate against it."""
+    import jsonschema
+
+    name, args, method, path, _query, _body = row
+    client, router = tool_client
+    payload: list | dict = [] if name.startswith("gitlab_list_") else {}
+    router.request(method, path).mock(return_value=Response(200, json=payload))
+
+    schema = {t.name: t.output_schema for t in await client.list_tools()}[name]
+    result = await client.call_tool(name, args)
+    if schema is not None and result.structured_content is not None:
+        jsonschema.validate(result.structured_content, schema)
+
+
+async def test_success_text_is_byte_identical_pretty_json(tool_client):
+    """Golden pin: a success result's text is the pretty, UTF-8 JSON of the object
+    (``indent=2, ensure_ascii=False``) — unchanged by the move to ``ToolResult``."""
+    client, router = tool_client
+    router.get("/projects/123").mock(
+        return_value=Response(200, json={"id": 123, "name": "héllo", "path": "g/p"})
+    )
+    result = await client.call_tool("gitlab_get_project", {"project_id": "123"})
+    expected = {"id": 123, "name": "héllo", "path": "g/p"}
+    assert result.content[0].text == json.dumps(expected, indent=2, ensure_ascii=False)
+    assert result.structured_content == expected
