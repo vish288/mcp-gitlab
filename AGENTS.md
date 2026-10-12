@@ -77,7 +77,7 @@ Every tool MUST have `annotations={}` with at minimum `readOnlyHint`.
 - Good: "Get merge request details. Returns title, state, branches, author, diff_refs."
 
 ### Error handling
-- Tools do not catch their own errors: the `tool_result` decorator wraps every tool, turns an expected `GitLabError` into an `isError: true` result via `_error_result(_err(e))`, and re-raises anything else as a `ToolError` (a bug) after logging it with a traceback. `gitlab_merge_mr_sequence` keeps its own `except GitLabError`, which for now still returns a successful result carrying the error body plus `merged_so_far`/`scheduled` (making that path `isError` is an open follow-up).
+- Tools do not catch their own errors: the `tool_result` decorator wraps every tool, turns an expected `GitLabError` into an `isError: true` result via `_error_result(_err(e))`, and re-raises anything else as a `ToolError` (a bug) after logging it with a traceback. `gitlab_merge_mr_sequence` keeps its own `except GitLabError` so its `isError: true` envelope can carry `merged_so_far`/`scheduled` (which MRs landed before the failure); bugs still fall through to `tool_result`.
 - Error text MUST be actionable: what went wrong plus a suggested fix.
 - Never return concatenated JSON strings — always a single valid JSON object.
 - Never expose stack traces, tokens, or internal paths.
