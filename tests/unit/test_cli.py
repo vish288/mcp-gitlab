@@ -35,7 +35,7 @@ def _no_token_env(tmp_path, **extra):
 def test_sse_deprecation_warning():
     runner = CliRunner()
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict(
             "os.environ",
             {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_TOKEN": "test-token"},
@@ -48,7 +48,7 @@ def test_sse_deprecation_warning():
             in result.output
         )
         assert "Use --transport streamable-http" in result.output
-        mock_run.assert_called_once()
+        run_async.assert_awaited_once()
 
 
 def test_oauth_requires_streamable_http():
@@ -56,32 +56,32 @@ def test_oauth_requires_streamable_http():
     runner = CliRunner()
     # Isolate os.environ: main() writes GITLAB_AUTH before the guard raises.
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict("os.environ", {}, clear=False),
     ):
         result = runner.invoke(main, ["--auth", "oauth"])
     assert result.exit_code == 2
     assert "requires --transport streamable-http" in result.output
-    mock_run.assert_not_called()
+    run_async.assert_not_awaited()
 
 
 def test_oauth_rejected_on_sse():
     runner = CliRunner()
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict("os.environ", {}, clear=False),
     ):
         result = runner.invoke(main, ["--auth", "oauth", "--transport", "sse"])
     assert result.exit_code == 2
     assert "requires --transport streamable-http" in result.output
-    mock_run.assert_not_called()
+    run_async.assert_not_awaited()
 
 
 def test_stdio_default_does_not_set_oauth():
     """R15: a plain stdio run leaves GITLAB_AUTH at 'token'."""
     runner = CliRunner()
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict(
             "os.environ",
             {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_TOKEN": "t"},
@@ -91,7 +91,7 @@ def test_stdio_default_does_not_set_oauth():
         result = runner.invoke(main, ["--transport", "stdio"])
         assert result.exit_code == 0
         assert os.environ["GITLAB_AUTH"] == "token"
-        mock_run.assert_called_once()
+        run_async.assert_awaited_once()
 
 
 # ── auth subcommands ──────────────────────────────────────────────
@@ -100,7 +100,7 @@ def test_stdio_default_does_not_set_oauth():
 def test_bare_invocation_still_serves():
     runner = CliRunner()
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict(
             "os.environ",
             {"GITLAB_URL": TEST_URL, "GITLAB_TOKEN": "t"},
@@ -109,7 +109,7 @@ def test_bare_invocation_still_serves():
     ):
         result = runner.invoke(main, [])
         assert result.exit_code == 0
-        mock_run.assert_called_once()
+        run_async.assert_awaited_once()
 
 
 def test_auth_login_does_not_start_server(tmp_path):
@@ -187,12 +187,12 @@ def test_token_flag_still_works_and_warns(tmp_path):
     runner = CliRunner()
     env = _no_token_env(tmp_path, GITLAB_URL=TEST_URL)
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict("os.environ", env, clear=False),
     ):
         result = runner.invoke(main, ["--gitlab-token", "argv-tok"])
         assert result.exit_code == 0, result.output
-        mock_run.assert_called_once()
+        run_async.assert_awaited_once()
         assert os.environ["GITLAB_TOKEN"] == "argv-tok"
     assert "--gitlab-token is deprecated" in result.stderr
     assert "GITLAB_TOKEN" in result.stderr
@@ -203,12 +203,12 @@ def test_env_token_does_not_warn(tmp_path):
     runner = CliRunner()
     env = _no_token_env(tmp_path, GITLAB_URL=TEST_URL, GITLAB_TOKEN="env-tok")
     with (
-        patch("mcp_gitlab.asyncio.run") as mock_run,
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
         patch.dict("os.environ", env, clear=False),
     ):
         result = runner.invoke(main, [])
         assert result.exit_code == 0, result.output
-        mock_run.assert_called_once()
+        run_async.assert_awaited_once()
     assert "deprecated" not in result.stderr
 
 

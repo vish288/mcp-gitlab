@@ -101,6 +101,7 @@ async def build_oauth_app(
     """
     import os
 
+    original_home = os.environ.get("FASTMCP_HOME")
     os.environ["FASTMCP_HOME"] = str(tmp_path)
     config = GitLabConfig(
         url=TEST_URL,
@@ -136,3 +137,7 @@ async def build_oauth_app(
     finally:
         mcp._lifespan = original_lifespan
         mcp.auth = original_auth
+        if original_home is None:
+            os.environ.pop("FASTMCP_HOME", None)
+        else:
+            os.environ["FASTMCP_HOME"] = original_home

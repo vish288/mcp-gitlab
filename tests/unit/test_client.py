@@ -113,6 +113,14 @@ class TestRequest:
             await client.get("/projects/123")
         assert exc_info.value.status_code == 401
 
+    async def test_auth_error_403(self, client, mock_api):
+        """A 403 maps to GitLabAuthError too (not a generic ApiError), so the
+        decorator attaches the token/scope hint."""
+        mock_api.get("/projects/123").mock(return_value=httpx.Response(403, text="Forbidden"))
+        with pytest.raises(GitLabAuthError) as exc_info:
+            await client.get("/projects/123")
+        assert exc_info.value.status_code == 403
+
     async def test_not_found_error(self, client, mock_api):
         mock_api.get("/projects/999").mock(return_value=httpx.Response(404, text="Not Found"))
         with pytest.raises(GitLabNotFoundError):

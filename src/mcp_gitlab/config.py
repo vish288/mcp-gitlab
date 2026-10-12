@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -12,16 +12,19 @@ class GitLabConfig:
     """Configuration for the GitLab MCP server, loaded from environment variables."""
 
     url: str = ""
-    token: str = ""
+    # repr=False on the three secret fields so a logged/printed config never
+    # leaks the token or OAuth credentials (the dataclass repr is the one place
+    # they would otherwise appear verbatim).
+    token: str = field(default="", repr=False)
     read_only: bool = False
     timeout: int = 30
     ssl_verify: bool = True
     auth: str = "token"  # GITLAB_AUTH: "token" or "oauth"
     oauth_client_id: str = ""  # GITLAB_OAUTH_CLIENT_ID
-    oauth_client_secret: str = ""  # GITLAB_OAUTH_CLIENT_SECRET
+    oauth_client_secret: str = field(default="", repr=False)  # GITLAB_OAUTH_CLIENT_SECRET
     oauth_base_url: str = ""  # GITLAB_OAUTH_BASE_URL, trailing slash stripped
     oauth_scopes: str = "api"  # GITLAB_OAUTH_SCOPES, space-separated
-    oauth_jwt_key: str = ""  # GITLAB_OAUTH_JWT_KEY, else derived from the secret
+    oauth_jwt_key: str = field(default="", repr=False)  # GITLAB_OAUTH_JWT_KEY, else derived
     # LocalCredentials when the token came from `mcp-gitlab auth login`. Not read
     # by from_env() (that must not touch the filesystem); lifespan sets it.
     credentials: Any = None
