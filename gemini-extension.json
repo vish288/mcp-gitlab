@@ -1,7 +1,7 @@
 {
   "name": "mcp-gitlab",
   "version": "0.20.0",
-  "description": "GitLab MCP server for MCP 2026-07-28: projects, MRs, files, reviews, pipelines, CI/CD, issues",
+  "description": "GitLab MCP server (MCP 2026-07-28): projects, MRs, pipelines, CI/CD, issues; writes or read-only",
   "mcpServers": {
     "mcp-gitlab": {
       "command": "uvx",
@@ -25,13 +25,13 @@
     },
     {
       "name": "GITLAB_READ_ONLY",
-      "description": "Restrict to read-only operations (true/false)",
+      "description": "Alias for MCP_READ_ONLY. Any value other than false/0/no/off/empty locks the server read-only; --read-only can only raise the lock",
       "required": false,
       "sensitive": false
     },
     {
       "name": "MCP_READ_ONLY",
-      "description": "Same as GITLAB_READ_ONLY; shared name across the mcp-* servers. Either being truthy locks the server read-only and nothing can turn it off at runtime",
+      "description": "Locks the server read-only: write tools and write-workflow prompts are not listed and nothing lifts the lock at runtime. Shared name across the mcp-* servers; set it in the deployer's env",
       "required": false,
       "sensitive": false
     },
