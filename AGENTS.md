@@ -48,6 +48,11 @@ uv run ruff format --check .   # CI runs --check; formatting drift fails the bui
 target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waives `S101`,
 `S105`, `S106`.
 
+Docker (no CI job — smoke-check by hand): `docker build -t mcp-gitlab .` then
+`docker run --rm mcp-gitlab --help` exits 0. The image builds from the repo with `uv sync
+--frozen --no-dev`, runs as a non-root user, and defaults to `MCP_READ_ONLY=true`. Nothing is
+pushed to a registry.
+
 ## Patterns
 
 - All tools are `async def` returning a `ToolResult` (built by `_ok`/`_paginated`/`_error_result`, never a bare string)
