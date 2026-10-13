@@ -94,6 +94,82 @@ def test_stdio_default_does_not_set_oauth():
         run_async.assert_awaited_once()
 
 
+# ── token-mode HTTP bind guard (gitlab-H-04) ──────────────────────
+
+
+def _http_env(tmp_path, **extra):
+    env = _no_token_env(tmp_path, GITLAB_URL=TEST_URL, GITLAB_TOKEN="t")
+    env["GITLAB_HTTP_BEARER_TOKEN"] = ""
+    env.update(extra)
+    return env
+
+
+def test_token_http_refuses_non_loopback_without_bearer(tmp_path):
+    """gitlab-H-04: token mode must not serve the PAT to the network. A
+    non-loopback bind with no bearer token is a usage error before anything runs."""
+    runner = CliRunner()
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", _http_env(tmp_path), clear=False),
+    ):
+        result = runner.invoke(main, ["--transport", "streamable-http", "--host", "192.0.2.10"])
+    assert result.exit_code == 2
+    assert "GITLAB_HTTP_BEARER_TOKEN" in result.output
+    assert "192.0.2.10" in result.output
+    run_async.assert_not_awaited()
+
+
+def test_token_http_loopback_still_runs_without_bearer(tmp_path):
+    """The default 127.0.0.1 bind is only reachable locally, so it needs no bearer."""
+    runner = CliRunner()
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", _http_env(tmp_path), clear=False),
+    ):
+        result = runner.invoke(main, ["--transport", "streamable-http"])
+        assert result.exit_code == 0, result.output
+        run_async.assert_awaited_once()
+
+
+def test_token_http_bearer_allows_non_loopback(tmp_path):
+    """A >=16-char bearer gates the HTTP face, so a non-loopback bind is allowed."""
+    runner = CliRunner()
+    from mcp_gitlab.servers.gitlab import mcp as server
+
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict(
+            "os.environ",
+            _http_env(tmp_path, GITLAB_HTTP_BEARER_TOKEN="0123456789abcdef0123"),
+            clear=False,
+        ),
+    ):
+        try:
+            result = runner.invoke(main, ["--transport", "streamable-http", "--host", "192.0.2.10"])
+            assert result.exit_code == 0, result.output
+            run_async.assert_awaited_once()
+            assert server.auth is not None
+        finally:
+            server.auth = None
+
+
+def test_token_http_short_bearer_is_rejected(tmp_path):
+    """Too short a bearer is a usage error, not a weak gate."""
+    runner = CliRunner()
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict(
+            "os.environ",
+            _http_env(tmp_path, GITLAB_HTTP_BEARER_TOKEN="short"),
+            clear=False,
+        ),
+    ):
+        result = runner.invoke(main, ["--transport", "streamable-http", "--host", "192.0.2.10"])
+    assert result.exit_code == 2
+    assert "at least 16" in result.output
+    run_async.assert_not_awaited()
+
+
 # ── auth subcommands ──────────────────────────────────────────────
 
 
