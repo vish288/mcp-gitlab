@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.0] - 2026-10-13
+
+### Features
+- feat(errors): treat an unreachable GitLab instance as an expected failure (afa3b9b)
+
+### Tests
+- test: drop contract-row duplicates in test_tools and pin inline-discussion bodies (91fde94)
+
+
 ## [0.18.0] - 2026-10-12
 
 ### Features
