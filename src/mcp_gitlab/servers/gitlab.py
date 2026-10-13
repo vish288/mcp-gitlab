@@ -383,7 +383,7 @@ def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
                 return _error_result(
                     {
                         "error": f"{type(e).__name__}: {e}",
-                        "hint": f"cannot reach {url} — check GITLAB_URL and that the instance is up",
+                        "hint": f"cannot reach {url} — check GITLAB_URL and that GitLab is up",
                     }
                 )
             except Exception as e:
