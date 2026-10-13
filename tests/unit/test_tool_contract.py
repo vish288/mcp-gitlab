@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import json
 import logging
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from httpx import Response
+
+from mcp_gitlab.config import GitLabConfig
+from mcp_gitlab.servers.gitlab import mcp
 
 P = "/projects/123"
 MR = f"{P}/merge_requests/1"
@@ -777,31 +781,40 @@ async def test_every_tool_has_a_row(tool_client):
     assert {r[0] for r in ROWS} == {t.name for t in await client.list_tools()}
 
 
-async def test_read_only_blocks_every_write_tool(readonly_client):
-    """Every tool advertising ``readOnlyHint: False`` must refuse in read-only mode
-    with an ``isError`` result and make no upstream call — ``_check_write`` runs
-    before any mutation. Derives the write set from the annotation rather than a
-    hand-kept list, so a write tool that forgot ``_check_write`` (e.g. dropping
-    ``write=True`` from ``gitlab_delete_project``) is caught here, not in production.
+class _NoCallClient:
+    """A GitLabClient stand-in that fails if a tool reaches it — proves the read-only
+    guard refuses before any upstream call."""
+
+    def __getattr__(self, name: str) -> object:
+        msg = f"read-only guard let a write tool reach the client via .{name}"
+        raise AssertionError(msg)
+
+
+async def test_read_only_blocks_every_write_tool():
+    """Every write tool must refuse under a read-only config with an ``isError`` result
+    and reach no upstream call — the ``_check_write`` guard runs before any mutation.
+    Under the lock these tools are hidden from ``tools/list`` (see test_read_only_lock),
+    so this drives the guard directly: it derives the write set from the ``write`` tag
+    (not a hand-kept list), so a tool that forgot its guard (e.g. dropping ``write=True``
+    from ``gitlab_delete_project``) is caught here, not in production.
     """
-    client, router = readonly_client
     args_by_name = {r[0]: r[1] for r in ROWS}
-    write_tools = [
-        t.name
-        for t in await client.list_tools()
-        if t.annotations is not None and t.annotations.read_only_hint is False
-    ]
-    assert write_tools, "no write tools discovered — annotation introspection broke"
+    write_tools = [t for t in await mcp._list_tools() if "write" in t.tags]
+    assert write_tools, "no write tools discovered — tag introspection broke"
 
-    for name in write_tools:
-        result = await client.call_tool(name, args_by_name[name], raise_on_error=False)
-        assert result.is_error is True, f"{name} did not refuse in read-only mode"
-        body = json.loads(result.content[0].text)
-        assert "read-only" in body.get("hint", "").lower(), name
-
-    assert not router.calls, (
-        f"read-only mode let a write tool reach GitLab: {[c.request.url for c in router.calls]}"
+    ctx = SimpleNamespace(
+        lifespan_context={
+            "config": GitLabConfig(url="u", token="t", read_only=True),  # noqa: S106
+            "client": _NoCallClient(),
+        }
     )
+    for tool in write_tools:
+        result = await tool.fn(ctx, **args_by_name[tool.name])
+        assert result.is_error is True, f"{tool.name} did not refuse in read-only mode"
+        body = json.loads(result.content[0].text)
+        hint = body.get("hint", "").lower()
+        assert "read-only" in hint, tool.name
+        assert "deployer" in hint, tool.name
 
 
 async def test_bug_is_a_tool_error_not_a_result(tool_client, caplog):

@@ -27,7 +27,7 @@ def _render(filename: str, **kwargs: str) -> str:
     return Template(_load_file(_PROMPTS_DIR, filename)).safe_substitute(kwargs)
 
 
-@mcp.prompt(tags={"gitlab", "review"})
+@mcp.prompt(tags={"gitlab", "review", "write"})
 def review_mr(project_id: str, mr_iid: str = "") -> list[Message]:
     """Review a GitLab merge request — fetch details, check pipeline, review
     changes, and write discussion comments.
@@ -75,7 +75,7 @@ def diagnose_pipeline(project_id: str, pipeline_id: str = "") -> list[Message]:
     ]
 
 
-@mcp.prompt(tags={"gitlab", "release"})
+@mcp.prompt(tags={"gitlab", "release", "write"})
 def prepare_release(project_id: str, tag_name: str, ref: str = "main") -> list[Message]:
     """Prepare a release — compare commits since last tag, draft changelog,
     create tag and release.
@@ -96,7 +96,7 @@ def prepare_release(project_id: str, tag_name: str, ref: str = "main") -> list[M
     ]
 
 
-@mcp.prompt(tags={"gitlab", "settings"})
+@mcp.prompt(tags={"gitlab", "settings", "write"})
 def setup_branch_protection(project_id: str) -> list[Message]:
     """Set up branch protection — review settings, configure merge method,
     and create approval rules.
@@ -117,7 +117,7 @@ def setup_branch_protection(project_id: str) -> list[Message]:
     ]
 
 
-@mcp.prompt(tags={"gitlab", "review", "approvals"})
+@mcp.prompt(tags={"gitlab", "review", "approvals", "write"})
 def approve_mr(project_id: str, mr_iid: str = "") -> list[Message]:
     """Evaluate a merge request for approval — check pipeline, review changes,
     verify discussions are resolved, then approve or request changes.
@@ -141,7 +141,7 @@ def approve_mr(project_id: str, mr_iid: str = "") -> list[Message]:
     ]
 
 
-@mcp.prompt(tags={"gitlab", "issues"})
+@mcp.prompt(tags={"gitlab", "issues", "write"})
 def triage_issues(project_id: str, label: str = "") -> list[Message]:
     """Triage open issues — categorize, prioritize, identify duplicates,
     and suggest labels.

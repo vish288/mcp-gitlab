@@ -25,6 +25,13 @@ def _err_body(result: Any) -> dict:
     return body
 
 
+def _assert_unknown_tool(result: Any) -> None:
+    """A write tool called under the read-only lock is hidden from the registry, so the
+    client gets a protocol "Unknown tool" error rather than the guard envelope."""
+    assert result.is_error is True
+    assert "unknown tool" in result.content[0].text.lower()
+
+
 # ═══════════════════════════════════════════════════════
 # Projects
 # ═══════════════════════════════════════════════════════
@@ -79,10 +86,7 @@ class TestReadOnlyMode:
         result = await client.call_tool(
             "gitlab_create_project", {"name": "test"}, raise_on_error=False
         )
-        parsed = _err_body(result)
-        assert "error" in parsed
-        assert "hint" in parsed
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_create_branch_blocked(self, readonly_client):
         client, router = readonly_client
@@ -91,9 +95,7 @@ class TestReadOnlyMode:
             {"project_id": "123", "branch_name": "feat/test", "ref": "main"},
             raise_on_error=False,
         )
-        parsed = _err_body(result)
-        assert "error" in parsed
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_read_still_works(self, readonly_client):
         client, router = readonly_client
@@ -737,36 +739,28 @@ class TestMRApprovalsAndMetadata:
         result = await client.call_tool(
             "gitlab_approve_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
         )
-        parsed = _err_body(result)
-        assert "error" in parsed
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_unapprove_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
         result = await client.call_tool(
             "gitlab_unapprove_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
         )
-        parsed = _err_body(result)
-        assert "error" in parsed
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_subscribe_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
         result = await client.call_tool(
             "gitlab_subscribe_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
         )
-        parsed = _err_body(result)
-        assert "error" in parsed
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_unsubscribe_mr_readonly_blocked(self, readonly_client):
         client, router = readonly_client
         result = await client.call_tool(
             "gitlab_unsubscribe_mr", {"project_id": "123", "mr_iid": 1}, raise_on_error=False
         )
-        parsed = _err_body(result)
-        assert "error" in parsed
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
 
 # ═══════════════════════════════════════════════════════
@@ -1005,18 +999,14 @@ class TestDocstringContracts:
     """Tools whose docstrings promise a specific return shape must deliver it."""
 
     async def test_merge_mr_sequence_readonly_blocked(self, readonly_client):
-        """Read-only mode must return a JSON error, not blow up on an unbound local."""
+        """A write tool, hidden under the read-only lock: the client gets "Unknown tool"."""
         client, router = readonly_client
         result = await client.call_tool(
             "gitlab_merge_mr_sequence",
             {"project_id": "123", "mr_iids": [1, 2]},
             raise_on_error=False,
         )
-        assert result.is_error is True
-        parsed = _parse(result)
-        assert "error" in parsed
-        assert "read-only" in parsed["hint"].lower()
-        assert parsed["merged_so_far"] == []
+        _assert_unknown_tool(result)
 
     async def test_merge_mr_sequence_partial_failure_reports_progress(self, tool_client):
         """A mid-sequence API failure still reports which MRs already merged, plus a hint."""
@@ -1419,8 +1409,7 @@ class TestDraftNotes:
             {"project_id": "123", "mr_iid": 1, "body": "x"},
             raise_on_error=False,
         )
-        parsed = _err_body(result)
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_list(self, tool_client):
         client, router = tool_client
@@ -1452,8 +1441,7 @@ class TestDraftNotes:
             {"project_id": "123", "mr_iid": 1},
             raise_on_error=False,
         )
-        parsed = _err_body(result)
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
     async def test_delete(self, tool_client):
         client, router = tool_client
@@ -1475,8 +1463,7 @@ class TestDraftNotes:
             {"project_id": "123", "mr_iid": 1, "draft_note_id": 5},
             raise_on_error=False,
         )
-        parsed = _err_body(result)
-        assert "read-only" in parsed["hint"].lower()
+        _assert_unknown_tool(result)
 
 
 # ═══════════════════════════════════════════════════════
