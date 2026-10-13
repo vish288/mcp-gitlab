@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.0] - 2026-10-13
+
+### Features
+- feat(read-only): lock via MCP_READ_ONLY; hide write tools and prompts (dcd1a7b)
+
+
 ## [0.19.0] - 2026-10-13
 
 ### Features
