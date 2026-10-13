@@ -229,8 +229,9 @@ Three settings control whether writes are allowed:
 - `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`) locks the server read-only in both auth modes: write tools are not listed.
 
 GitLab's `api` scope implies `read_api`, so an `api` token reads and writes. When
-the lock is on, the write tools are absent from `tools/list`; a client that cached
-the list and calls one gets:
+the lock is on, the write tools are absent from `tools/list`, and a client that
+calls one anyway gets an `Unknown tool` error. If a write still reaches the guard,
+it returns:
 
 > This server is deployed read-only; writes cannot be enabled from the client. Ask the deployer.
 

@@ -94,7 +94,7 @@ def test_stdio_default_does_not_set_oauth():
         run_async.assert_awaited_once()
 
 
-# ── token-mode HTTP bind guard (gitlab-H-04) ──────────────────────
+# ── token-mode HTTP bind guard ──────────────────────
 
 
 def _http_env(tmp_path, **extra):
@@ -105,7 +105,7 @@ def _http_env(tmp_path, **extra):
 
 
 def test_token_http_refuses_non_loopback_without_bearer(tmp_path):
-    """gitlab-H-04: token mode must not serve the PAT to the network. A
+    """Token mode must not serve the PAT to the network. A
     non-loopback bind with no bearer token is a usage error before anything runs."""
     runner = CliRunner()
     with (
