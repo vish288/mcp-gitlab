@@ -2,9 +2,63 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
+
+# Locked read-only. A value is FALSEY only if it is one of these (stripped,
+# case-insensitive); anything else non-empty locks the server — unrecognised
+# values fail closed. MCP_READ_ONLY is shared across the mcp-* servers so
+# one deployer-set env var locks any of them; the per-server alias stays.
+_FALSEY = frozenset({"", "0", "false", "no", "off"})
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_SHARED_READ_ONLY = "MCP_READ_ONLY"
+
+_log = logging.getLogger(__name__)
+
+
+def _norm(value: str | None) -> str | None:
+    return value.strip().lower() if value is not None else None
+
+
+def read_only_sources(alias: str) -> list[str]:
+    """Env var names (shared first, then the per-server alias) whose value locks
+    read-only — a value that is set and not in the FALSEY set (so truthy *and*
+    unrecognised values both lock)."""
+    return [
+        name
+        for name in (_SHARED_READ_ONLY, alias)
+        if (v := _norm(os.getenv(name))) is not None and v not in _FALSEY
+    ]
+
+
+def _read_only(alias: str) -> bool:
+    """Resolve read-only as ``lock(MCP_READ_ONLY) or lock(<alias>)``.
+
+    Any locking source wins; a falsy value is never an override — it is the default.
+    Log one WARNING per ignored falsy source (so a deployer sees it had no effect) and
+    one per unrecognised value (which fails closed to locked)."""
+    locked = bool(read_only_sources(alias))
+    if locked:
+        for name in (_SHARED_READ_ONLY, alias):
+            raw = os.getenv(name)
+            v = _norm(raw)
+            if v is None:
+                continue
+            if v in _FALSEY:
+                _log.warning(
+                    "read-only is locked on; ignoring %s=%s (a falsy value cannot unlock it)",
+                    name,
+                    raw,
+                )
+            elif v not in _TRUTHY:
+                _log.warning(
+                    "read-only: locking on unrecognised %s=%s (anything but a falsy value locks)",
+                    name,
+                    raw,
+                )
+    return locked
 
 
 @dataclass
@@ -38,11 +92,7 @@ class GitLabConfig:
             or os.getenv("GITLAB_PERSONAL_ACCESS_TOKEN")
             or os.getenv("GITLAB_API_TOKEN", "")
         )
-        read_only = os.getenv("GITLAB_READ_ONLY", "false").lower() in (
-            "true",
-            "1",
-            "yes",
-        )
+        read_only = _read_only("GITLAB_READ_ONLY")
         timeout = int(os.getenv("GITLAB_TIMEOUT", "30"))
         ssl_verify = os.getenv("GITLAB_SSL_VERIFY", "true").lower() not in (
             "false",

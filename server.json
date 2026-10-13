@@ -38,6 +38,13 @@
           "isSecret": false
         },
         {
+          "name": "MCP_READ_ONLY",
+          "description": "Same as GITLAB_READ_ONLY; shared name across the mcp-* servers. Either being truthy locks the server read-only and nothing can turn it off at runtime",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
           "name": "GITLAB_AUTH",
           "description": "Authentication mode: token (default) or oauth (OAuth 2.1 proxy; streamable-http only)",
           "isRequired": false,

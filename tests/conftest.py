@@ -14,7 +14,7 @@ from fastmcp import Client, FastMCP
 from mcp_gitlab.client import GitLabClient
 from mcp_gitlab.config import GitLabConfig
 from mcp_gitlab.oauth import GitLabProvider
-from mcp_gitlab.servers.gitlab import mcp
+from mcp_gitlab.servers.gitlab import _lock_read_only, mcp
 
 TEST_URL = "https://gitlab.example.com"
 TEST_TOKEN = "test-token"
@@ -23,6 +23,15 @@ API_BASE = f"{TEST_URL}/api/v4"
 # localhost/127.0.0.1 (`mcp/server/auth/routes.py::validate_issuer_url`), so
 # the spec's literal "http://testserver" cannot be used as the OAuth base.
 OAUTH_BASE = "http://localhost"
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The locked read-only switch is deployer-set; no test should inherit it from the
+    runner's environment (the suite must stay green with ``MCP_READ_ONLY=true`` exported).
+    Tests that exercise the switch set the vars explicitly, which overrides this."""
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("GITLAB_READ_ONLY", raising=False)
 
 
 @pytest.fixture
@@ -59,12 +68,22 @@ async def _tool_client(*, read_only: bool) -> AsyncIterator[tuple[Client, respx.
 
     original = mcp._lifespan
     mcp._lifespan = mock_lifespan
+    # Snapshot visibility so the lock a read-only client applies does not leak into the
+    # shared module ``mcp`` used by read-write tests: truncate the appended Visibility
+    # transforms and restore instructions in ``finally`` (the lock keys its idempotency
+    # off the restored instructions sentence, so there is no separate flag to reset).
+    tx = len(mcp._transforms)
+    instructions = mcp.instructions
     try:
+        if read_only:
+            _lock_read_only(mcp, sources=["GITLAB_READ_ONLY"])
         with respx.mock(base_url=API_BASE) as router:
             async with Client(mcp) as mcp_client:
                 yield mcp_client, router
     finally:
         mcp._lifespan = original
+        del mcp._transforms[tx:]
+        mcp.instructions = instructions
 
 
 @pytest.fixture

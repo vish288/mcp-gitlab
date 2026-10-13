@@ -22,7 +22,7 @@ from mcp.types import TextContent
 from pydantic import Field
 
 from ..client import GitLabClient
-from ..config import GitLabConfig
+from ..config import GitLabConfig, read_only_sources
 from ..exceptions import (
     GitLabApiError,
     GitLabAuthError,
@@ -53,6 +53,33 @@ ProjectId = Annotated[str, Field(description="Project ID, path, or full GitLab U
 PerPage = Annotated[int | None, Field(description="Results per page (1-100)", ge=1, le=100)]
 
 
+_LOCK_SUFFIX = (
+    " This deployment is locked read-only: write tools are not listed and cannot be"
+    " enabled from the client."
+)
+
+
+def _lock_read_only(server: FastMCP, *, sources: list[str] | None = None) -> None:
+    """Hide write tools and write-workflow prompts from a read-only server, for good.
+
+    fastmcp 4.0.10: ``disable`` appends a ``Visibility(False)`` transform, so every
+    component carrying the ``write`` tag (tools and prompts) drops out of ``tools/list``
+    and ``prompts/list`` and ``tools/call`` on them returns a "Unknown tool" error. There
+    is no client-reachable path to re-enable them — fastmcp's re-enable APIs are server
+    code only, and this server never calls them (a src-scan test enforces that). The lock
+    is unconditional on auth mode (oauth also hides by tag); the per-user ``read_api`` scope
+    refusal in ``_check_write`` stays call-time. ``_check_write`` itself stays as defence in
+    depth. Idempotent off the appended instructions sentence so a re-entered lifespan (tests)
+    does not stack transforms — no separate module flag to reset.
+    """
+    if _LOCK_SUFFIX in (server.instructions or ""):
+        return
+    server.disable(tags={"write"})
+    server.instructions = (server.instructions or "") + _LOCK_SUFFIX
+    named = f" ({', '.join(sources)})" if sources else ""
+    _log.info("read-only: LOCKED%s — write tools and prompts hidden", named)
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     config = GitLabConfig.from_env()
@@ -65,7 +92,11 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     config.validate()
     pkg_version = version("mcp-gitlab")
     _log.info("mcp-gitlab %s starting", pkg_version)
-    _log.info("GitLab: %s (read-only: %s)", config.url, config.read_only)
+    if config.read_only:
+        _log.info("GitLab: %s", config.url)
+        _lock_read_only(server, sources=read_only_sources("GITLAB_READ_ONLY"))
+    else:
+        _log.info("GitLab: %s (read-only: %s)", config.url, config.read_only)
     if config.auth == "token":
         _log.info("Auth: %s", "stored OAuth credentials" if config.credentials else "env token")
     client = GitLabClient(config)
@@ -249,7 +280,8 @@ def _err(error: Exception) -> dict[str, Any]:
             )
         else:
             detail["hint"] = (
-                "Server is in read-only mode. Set GITLAB_READ_ONLY=false to enable writes."
+                "This server is deployed read-only; writes cannot be enabled from the client. "
+                "Ask the deployer."
             )
     elif isinstance(error, GitLabApiError):
         detail["status_code"] = error.status_code

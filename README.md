@@ -81,7 +81,8 @@ uv pip install mcp-gitlab
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
 | `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (see below) |
-| `GITLAB_READ_ONLY` | No | `false` | Set to `true` to disable write operations |
+| `GITLAB_READ_ONLY` | No | `false` | Set to `true` to lock the server read-only; write tools are not listed and every write is refused |
+| `MCP_READ_ONLY` | No | `false` | Same as `GITLAB_READ_ONLY`; shared name across the mcp-* servers. Either being truthy locks the server read-only, and nothing can turn it back off at runtime |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
 | `GITLAB_AUTH` | No | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy; see below) |
@@ -180,7 +181,7 @@ Application ID and Secret.
 | `GITLAB_OAUTH_CLIENT_ID` | **Yes** | - | Application ID (oauth mode, or local sign-in) |
 | `GITLAB_OAUTH_CLIENT_SECRET` | **Yes** | - | Its secret |
 | `GITLAB_OAUTH_BASE_URL` | **Yes** | - | Public URL of this server, no trailing slash (e.g. `https://mcp.example.com`). Resource URL is `<base>/mcp` |
-| `GITLAB_OAUTH_SCOPES` | No | `api` | Space-separated GitLab scopes required on every request. Use `read_api` for a read-only deployment |
+| `GITLAB_OAUTH_SCOPES` | No | `api` | Space-separated GitLab scopes required on every request. For a read-only OAuth deployment set `read_api` here *and* `MCP_READ_ONLY=true`, so write tools are hidden server-wide and per-user tokens lack write scope |
 | `GITLAB_OAUTH_JWT_KEY` | No | derived | FastMCP JWT signing key, ≥ 32 random chars. Set it in production so client registrations survive a client-secret rotation |
 | `FASTMCP_HOME` | No | platform data dir | The encrypted token store lives at `$FASTMCP_HOME/oauth-proxy/<fingerprint>/` |
 
@@ -221,7 +222,7 @@ mcp-gitlab implements the Model Context Protocol. It supports the 2026-07-28 spe
 
 ### Error results
 
-An expected failure (a 404, a 401, a validation error, or a write blocked by read-only mode) comes back as a tool result with the protocol-level `isError` flag set, so a client can detect and self-correct instead of parsing an `"error"` key out of an otherwise successful result. The body is a JSON object with `error` and, where it helps, `status_code`, `body`, and an actionable `hint`. That object is the result's text content; the error sets no `structuredContent`, because a strict client (the TypeScript MCP SDK) validates `structuredContent` against the tool's output schema even on an `isError` result and the schema would reject the error body. An unexpected bug is also an `isError` result but carries only `TypeName: message` text, likewise with no `structuredContent`.
+An expected failure (a 404, a 401, a validation error, or a write that reaches the read-only guard) comes back as a tool result with the protocol-level `isError` flag set, so a client can detect and self-correct instead of parsing an `"error"` key out of an otherwise successful result. In locked read-only mode the write tools are hidden, so calling one returns an `Unknown tool` error; the read-only envelope is the guard's own response, returned only when a client reaches a write tool anyway (a cached listing, or a future untagged tool). The body is a JSON object with `error` and, where it helps, `status_code`, `body`, and an actionable `hint`. That object is the result's text content; the error sets no `structuredContent`, because a strict client (the TypeScript MCP SDK) validates `structuredContent` against the tool's output schema even on an `isError` result and the schema would reject the error body. An unexpected bug is also an `isError` result but carries only `TypeName: message` text, likewise with no `structuredContent`.
 
 A successful result carries the response as a JSON object in both the pretty text content and `structuredContent` (the object itself, not the old `{"result": "<json string>"}` wrapper a strict client would otherwise reject). Tools advertise no `outputSchema`: upstream GitLab fields pass through untyped, so a new API field never breaks a schema; a typed schema is opt-in per tool via `output_schema=` when a client needs one.
 
@@ -489,7 +490,7 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 ## Security Considerations
 
 - **Token scope**: Use the minimum required scope. `api` scope grants full access; prefer `read_api` for read-only deployments.
-- **Read-only mode**: Set `GITLAB_READ_ONLY=true` to disable all write operations (create, update, delete, merge). The server enforces read-only mode before any API call.
+- **Read-only mode**: Set `GITLAB_READ_ONLY=true` (or the shared `MCP_READ_ONLY=true`) to lock the server read-only. Write tools are not listed and cannot be enabled from the client — calling one returns "Unknown tool", and the guard refuses any write before an API call. The lock is computed once at startup and nothing turns it off at runtime; a falsy value never unlocks it. The `--read-only` flag can only raise the lock (it sets `GITLAB_READ_ONLY=true`); there is no `--no-read-only`, so argv can never unlock a server whose env already locked it. Because only a launch the deployer owns can enforce it, set it there: Claude Code `managed-mcp.json` `env`, or a container/k8s env on a deployer-run HTTP transport. In OAuth deployments combine it with `GITLAB_OAUTH_SCOPES=read_api` so per-user tokens also lack write scope.
 - **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
@@ -557,7 +558,7 @@ It supports `stdio` (the default) and `streamable-http`. The `sse` transport sti
 
 ### Is mcp-gitlab safe for read-only use?
 
-Yes. Set `GITLAB_READ_ONLY=true` to disable every create, update, delete, and merge. The server enforces this before any API call.
+Yes. Set `GITLAB_READ_ONLY=true` (or the shared `MCP_READ_ONLY=true`) to lock the server read-only: write tools are not listed, calling one returns "Unknown tool", and the guard refuses any write before an API call. The lock holds for the process and nothing turns it off at runtime, so set it in a launch the deployer owns (Claude Code `managed-mcp.json` `env`, container/k8s env).
 
 ### What token scopes does it need?
 

@@ -54,7 +54,7 @@ target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waive
 - `_ok(data)` / `_paginated(items)` wrap success in a `ToolResult` via `_result`: pretty JSON text (byte-identical to the old `-> str` output) plus the same object as `structuredContent`. `_err(e)` builds the error dict that `_error_result` wraps into the text-only `isError` result. Tools advertise no `outputSchema` (upstream fields pass through untyped); a typed schema is opt-in per tool via `output_schema=`
 - Errors: expected failures are `isError: true` results whose text content is the `{"error", "status_code"?, "body"?, "hint"?}` object and which set no `structuredContent` (a strict client — the TS MCP SDK — validates `structuredContent` against the tool's output schema even on an error, and the schema rejects the error body); bugs are `isError: true` with `TypeName: message` text and no `structuredContent`, logged with a traceback
 - `_slim_pipeline` / `_slim_job` trim pipeline and job payloads; tools expose `slim=True` by default
-- Write access control: `_check_write(ctx)` raises `GitLabWriteDisabledError` when `GITLAB_READ_ONLY=true`
+- Write access control: a truthy `MCP_READ_ONLY` / `GITLAB_READ_ONLY` locks the server read-only — `_lock_read_only` hides the write tools from `tools/list`, and `_check_write(ctx)` (via `@tool_result(write=True)`, or inline in `gitlab_merge_mr_sequence`) raises `GitLabWriteDisabledError` as defence in depth (see Read-only mode)
 - Tags: every tool tagged with `{"gitlab", "<category>", "read"|"write"}`
 - Parameters use `Annotated[type, Field(description=...)]`
 - Client auth is a per-request header: `PRIVATE-TOKEN` in token mode, `Bearer` from `get_access_token()` in oauth mode. `GitLabClient.with_bearer(token)` returns a shallow copy that shares the connection pool but swaps the auth header. The shared `httpx.AsyncClient` uses a cookie jar that rejects every cookie (empty-`allowed_domains` policy) so a `Set-Cookie` from GitLab is never stored on the shared client and replayed on another user's request
@@ -89,7 +89,16 @@ Every tool MUST have `annotations={}` with at minimum `readOnlyHint`.
 - Flatten — no nested dicts unless truly necessary.
 
 ### Read-only mode
-Every write tool MUST call `_check_write(ctx)` before any mutation.
+A truthy `MCP_READ_ONLY` (shared across the mcp-* servers) or the `GITLAB_READ_ONLY` alias,
+or `--read-only`, locks the server read-only for the process: `GitLabConfig.from_env` ORs the
+sources (any locking one wins; a falsy value never unlocks and logs a WARNING; an unrecognised
+value fails closed), and the lifespan calls `_lock_read_only(server)`, which
+`server.disable(tags={"write"})` so write tools and write-workflow prompts drop out of
+`tools/list`/`prompts/list` and `tools/call` on them returns "Unknown tool". The lock is
+computed once and never cleared; `src/` never calls `enable`/`enable_components`. The lock is
+unconditional on auth mode (oauth also hides by tag); the per-user `read_api` scope refusal in
+`_check_write` stays call-time. Every write tool MUST still call `_check_write(ctx)` (via
+`@tool_result(write=True)`, or inline as `gitlab_merge_mr_sequence` does) as defence in depth.
 
 ### Naming convention
 - Pattern: `gitlab_{verb}_{resource}` (snake_case)
@@ -138,12 +147,12 @@ plus an assistant acknowledgment.
 
 | Prompt | Purpose | Tags |
 |---|---|---|
-| `review_mr` | MR review workflow | gitlab, review |
-| `approve_mr` | MR approval workflow | gitlab, review, approvals |
+| `review_mr` | MR review workflow | gitlab, review, write |
+| `approve_mr` | MR approval workflow | gitlab, review, approvals, write |
 | `diagnose_pipeline` | CI debug workflow | gitlab, ci |
-| `prepare_release` | Release preparation | gitlab, release |
-| `setup_branch_protection` | Branch protection setup | gitlab, settings |
-| `triage_issues` | Issue triage workflow | gitlab, issues |
+| `prepare_release` | Release preparation | gitlab, release, write |
+| `setup_branch_protection` | Branch protection setup | gitlab, settings, write |
+| `triage_issues` | Issue triage workflow | gitlab, issues, write |
 
 ## Environment Variables
 
@@ -151,7 +160,8 @@ plus an assistant acknowledgment.
 |---|---|---|---|
 | `GITLAB_URL` | yes | — | Instance base URL; trailing slash stripped, `/api/v4` appended |
 | token (see below) | yes, unless signed in via `mcp-gitlab auth login` | — | Personal access token, OAuth2 token, or `$CI_JOB_TOKEN` |
-| `GITLAB_READ_ONLY` | no | `false` | `true`/`1`/`yes` disables all writes and deletes, enforced before any API call |
+| `GITLAB_READ_ONLY` | no | `false` | Truthy (or unrecognised) locks the server read-only: the write tools are not listed and are refused before any API call |
+| `MCP_READ_ONLY` | no | `false` | Same as `GITLAB_READ_ONLY`; shared name across the mcp-* servers. Either being truthy locks read-only, and nothing turns it off at runtime |
 | `GITLAB_TIMEOUT` | no | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | no | `true` | `false`/`0`/`no` skips verification — self-signed certs only |
 | `GITLAB_AUTH` | no | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy to GitLab; `streamable-http` only) |
@@ -174,6 +184,9 @@ CLI flags override env: `--gitlab-url`, `--read-only`, plus
 and hidden from `--help`; it still works and warns on stderr — set `GITLAB_TOKEN` instead). The
 `mcp-gitlab auth login|status|logout` subcommands manage local OAuth sign-in for stdio and never
 start the server.
+
+`--read-only` can only raise the lock (it sets `GITLAB_READ_ONLY=true`); there is no
+`--no-read-only`, so argv can never unlock a server whose env already locked it.
 
 ## Release Workflow
 
