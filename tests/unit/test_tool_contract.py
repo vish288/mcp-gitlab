@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 
+import httpx
 import pytest
 from httpx import Response
 
@@ -904,3 +905,23 @@ async def test_success_text_is_byte_identical_pretty_json(tool_client):
     expected = {"id": 123, "name": "héllo", "path": "g/p"}
     assert result.content[0].text == json.dumps(expected, indent=2, ensure_ascii=False)
     assert result.structured_content == expected
+
+
+async def test_network_error_is_expected(tool_client, caplog):
+    """D1: an unreachable upstream (an ``httpx`` transport error) is an expected failure,
+    not a bug. It comes back ``isError: true`` with a ``cannot reach <URL>`` hint, carries
+    no ``structuredContent``, and is NOT logged at ERROR with a traceback — a GitLab outage
+    or a wrong URL is the caller's to fix, not a server defect to page on."""
+    client, router = tool_client
+    router.get("/projects/123").mock(side_effect=httpx.ConnectError("name resolution failed"))
+
+    with caplog.at_level(logging.ERROR, logger="mcp_gitlab.servers.gitlab"):
+        result = await client.call_tool(
+            "gitlab_get_project", {"project_id": "123"}, raise_on_error=False
+        )
+
+    assert result.is_error is True
+    body = json.loads(result.content[0].text)
+    assert "cannot reach" in body["hint"]
+    assert result.structured_content is None
+    assert not [r for r in caplog.records if r.name == "mcp_gitlab.servers.gitlab"]
