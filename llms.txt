@@ -13,7 +13,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 - **Read-only mode**: `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`) hides the 57 write tools and write-workflow prompts for the life of the process; any non-false value locks; set it in the deployer's env
 - **Registry**: `io.github.vish288/mcp-gitlab`
 - **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
-- **Optional env vars**: `GITLAB_READ_ONLY` / `MCP_READ_ONLY` (see Read-only mode above), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification), `GITLAB_AUTH` (`token` default or `oauth` for per-user OAuth 2.1; see Configuration)
+- **Optional env vars**: `GITLAB_READ_ONLY` / `MCP_READ_ONLY` (see Read-only mode above), `GITLAB_HTTP_BEARER_TOKEN` (HTTP bind outside loopback, token mode), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification), `GITLAB_AUTH` (`token` default or `oauth` for per-user OAuth 2.1; see Configuration)
 
 ## Documentation
 

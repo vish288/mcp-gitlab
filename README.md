@@ -74,7 +74,7 @@ claude mcp add gitlab -e MCP_READ_ONLY=true -e GITLAB_URL=https://gitlab.example
 
 ```bash
 # with writes
-gemini mcp add -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
+gemini mcp add -s user -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
 # locked read-only
 gemini mcp add -s user -e MCP_READ_ONLY=true -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
 ```
@@ -109,13 +109,13 @@ codex mcp add gitlab --env GITLAB_URL=https://gitlab.example.com --env GITLAB_TO
 codex mcp add gitlab --env MCP_READ_ONLY=true --env GITLAB_URL=https://gitlab.example.com --env GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx -- uvx mcp-gitlab
 ```
 
-Drop `MCP_READ_ONLY` to allow writes. On a shared or hosted server put it in the deployer's env, not the client config.
-
 ### pip / uv
 
 ```bash
 uv pip install mcp-gitlab
 ```
+
+Drop `MCP_READ_ONLY` to allow writes. On a shared or hosted server put it in the deployer's env, not the client config.
 
 </details>
 
@@ -125,8 +125,9 @@ uv pip install mcp-gitlab
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
 | `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (see below) |
-| `GITLAB_READ_ONLY` | No | `false` | Per-server alias for `MCP_READ_ONLY`. Any value other than `false`/`0`/`no`/`off`/empty locks the server read-only: the 57 write tools and write-workflow prompts are not listed; `--read-only` can only raise the lock |
-| `MCP_READ_ONLY` | No | `false` | Same as `GITLAB_READ_ONLY`; shared name across the mcp-* servers. Either being truthy locks the server read-only, and nothing can turn it back off at runtime |
+| `MCP_READ_ONLY` | No | `false` | Shared name across the mcp-* servers. Any value other than `false`/`0`/`no`/`off`/empty locks the server read-only: the 57 write tools and write-workflow prompts are not listed, and nothing can turn it back off at runtime |
+| `GITLAB_READ_ONLY` | No | `false` | Per-server alias for `MCP_READ_ONLY`; either one locks the server read-only. `--read-only` can only raise the lock |
+| `GITLAB_HTTP_BEARER_TOKEN` | No | - | Bearer token (min 16 chars) required to bind an HTTP transport to a non-loopback host; clients send `Authorization: Bearer <token>`; token mode only |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
 | `GITLAB_AUTH` | No | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy; see below) |

@@ -85,6 +85,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": true
+        },
+        {
+          "name": "GITLAB_HTTP_BEARER_TOKEN",
+          "description": "Bearer token (min 16 chars) required to bind an HTTP transport to a non-loopback host; clients send it as 'Authorization: Bearer <token>' (token mode; --auth oauth has its own sign-in)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
         }
       ]
     }

@@ -193,6 +193,8 @@ start the server.
 `--read-only` can only raise the lock (it sets `GITLAB_READ_ONLY=true`); there is no
 `--no-read-only`, so argv can never unlock a server whose env already locked it.
 
+Token-mode HTTP on a non-loopback `--host` requires `GITLAB_HTTP_BEARER_TOKEN` (>= 16 chars) or `--auth oauth`; else exit 2.
+
 ## Release Workflow
 
 Releases run through GitHub Actions — never bump versions manually.

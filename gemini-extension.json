@@ -70,6 +70,12 @@
       "description": "FastMCP JWT signing key, >=32 random chars (oauth mode; defaults to one derived from the client secret)",
       "required": false,
       "sensitive": true
+    },
+    {
+      "name": "GITLAB_HTTP_BEARER_TOKEN",
+      "description": "Bearer token (min 16 chars) required to bind an HTTP transport to a non-loopback host; clients send it as 'Authorization: Bearer <token>' (token mode; --auth oauth has its own sign-in)",
+      "required": false,
+      "sensitive": true
     }
   ]
 }
