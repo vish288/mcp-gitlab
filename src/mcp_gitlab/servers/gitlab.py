@@ -13,6 +13,7 @@ from importlib.metadata import version
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
+import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
@@ -360,6 +361,12 @@ def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
 
     ``write=True`` runs the read-only guard first; its failure is expected and
     takes the envelope path like any other ``GitLabError``.
+
+    An ``httpx`` transport error (``httpx.HTTPError``: DNS/connect/timeout/read)
+    means the GitLab instance is unreachable — a wrong ``GITLAB_URL`` or an
+    outage, which the caller fixes, not a server defect. It is an expected
+    failure too: ``isError: true`` with a "cannot reach <URL>" hint and NO
+    ERROR log, so an outage does not look like a bug to page on.
     """
 
     def wrap(f: _Tool) -> _Tool:
@@ -371,6 +378,14 @@ def tool_result(fn: _Tool | None = None, *, write: bool = False) -> Any:
                 return await f(ctx, *args, **kwargs)
             except GitLabError as e:
                 return _error_result(_err(e))
+            except httpx.HTTPError as e:
+                url = _get_config(ctx).url
+                return _error_result(
+                    {
+                        "error": f"{type(e).__name__}: {e}",
+                        "hint": f"cannot reach {url} — check GITLAB_URL and that the instance is up",
+                    }
+                )
             except Exception as e:
                 _log.exception("%s failed", f.__name__)
                 msg = f"{type(e).__name__}: {e}"
