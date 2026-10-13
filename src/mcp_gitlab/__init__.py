@@ -24,6 +24,63 @@ _TOKEN_ENV_VARS = (
     "GITLAB_API_TOKEN",
 )
 
+# Hosts an HTTP transport may bind without a bearer token: the loopback
+# interface is only reachable from the same machine.
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _apply_token_http_auth(mcp: Any, host: str) -> None:
+    """Gate the HTTP face in token mode.
+
+    Token mode serves every tool with the owner's single GitLab PAT to anyone
+    who reaches the port — Host/Origin protection is not authentication. Require
+    a shared bearer token (``GITLAB_HTTP_BEARER_TOKEN``, sent by clients as
+    ``Authorization: Bearer <token>``) before binding anywhere but loopback;
+    otherwise refuse the bind. OAuth mode (``--auth oauth``) has its own
+    per-user auth and is not gated here.
+    """
+    bearer = os.getenv("GITLAB_HTTP_BEARER_TOKEN", "").strip()
+    if not bearer:
+        if host not in _LOOPBACK_HOSTS:
+            msg = (
+                f"--host {host} would expose the GitLab token to the network. "
+                "Set GITLAB_HTTP_BEARER_TOKEN (clients send it as "
+                "'Authorization: Bearer <token>'), use --auth oauth for per-user "
+                "sign-in, or bind to 127.0.0.1."
+            )
+            raise click.UsageError(msg)
+        return
+    if len(bearer) < 16:
+        msg = (
+            "GITLAB_HTTP_BEARER_TOKEN must be at least 16 characters; "
+            "generate one with: openssl rand -hex 32"
+        )
+        raise click.UsageError(msg)
+
+    import hmac
+
+    from fastmcp.server.auth import TokenVerifier
+    from mcp.server.auth.provider import AccessToken
+
+    class _BearerTokenVerifier(TokenVerifier):
+        """Accept exactly one shared bearer, compared in constant time.
+
+        ``StaticTokenVerifier`` resolves tokens with a dict ``.get`` (not
+        constant-time); ``hmac.compare_digest`` on encoded bytes avoids leaking
+        a matching prefix through timing and rejects a non-ASCII bearer instead
+        of 500-ing on it."""
+
+        def __init__(self, token: str) -> None:
+            super().__init__()
+            self._token = token.encode()
+
+        async def verify_token(self, token: str) -> AccessToken | None:
+            if hmac.compare_digest(token.encode(), self._token):
+                return AccessToken(token=token, client_id="mcp-gitlab", scopes=[])
+            return None
+
+    mcp.auth = _BearerTokenVerifier(bearer)
+
 
 @click.group(invoke_without_command=True)
 @click.option(
@@ -111,6 +168,8 @@ def main(
     if transport != "stdio":
         run_kwargs["host"] = host
         run_kwargs["port"] = port
+        if auth == "token":
+            _apply_token_http_auth(mcp, host)
 
     asyncio.run(mcp.run_async(show_banner=False, **run_kwargs))
 
