@@ -226,13 +226,13 @@ Three settings control whether writes are allowed:
 
 - `GITLAB_OAUTH_SCOPES` sets the scopes required on every request; the default is `api`.
 - The user's GitLab token carries the scopes GitLab issued, such as `api` or `read_api`.
-- `GITLAB_READ_ONLY=true` disables every write in both auth modes.
+- `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`) locks the server read-only in both auth modes: write tools are not listed.
 
-GitLab's `api` scope implies `read_api`, so an `api` token reads and writes. A
-write tool first calls `_check_write`. When `GITLAB_READ_ONLY` is true, the tool
-returns:
+GitLab's `api` scope implies `read_api`, so an `api` token reads and writes. When
+the lock is on, the write tools are absent from `tools/list`; a client that cached
+the list and calls one gets:
 
-> Server is in read-only mode. Set GITLAB_READ_ONLY=false to enable writes.
+> This server is deployed read-only; writes cannot be enabled from the client. Ask the deployer.
 
 When the token lacks the `api` scope in OAuth mode, the tool returns:
 

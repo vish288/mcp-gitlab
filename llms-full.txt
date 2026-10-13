@@ -10,9 +10,10 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 - **License**: MIT
 - **Protocol**: MCP 2026-07-28 (MCP 2.0); compatible with 2025-11-25 clients; built on FastMCP 4.x
 - **Transport**: stdio (default), streamable-http (recommended for remote), SSE (deprecated by the 2026-07-28 spec)
+- **Read-only mode**: `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`) hides the 57 write tools and write-workflow prompts for the life of the process; any non-false value locks; set it in the deployer's env
 - **Registry**: `io.github.vish288/mcp-gitlab`
 - **Required env vars**: `GITLAB_URL` (instance URL), `GITLAB_TOKEN` (personal access token with `api` scope)
-- **Optional env vars**: `GITLAB_READ_ONLY` / `MCP_READ_ONLY` (lock read-only; the shared name is the same across the mcp-* servers), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification), `GITLAB_AUTH` (`token` default or `oauth` for per-user OAuth 2.1; see Configuration)
+- **Optional env vars**: `GITLAB_READ_ONLY` / `MCP_READ_ONLY` (see Read-only mode above), `GITLAB_TIMEOUT` (request timeout), `GITLAB_SSL_VERIFY` (SSL verification), `GITLAB_AUTH` (`token` default or `oauth` for per-user OAuth 2.1; see Configuration)
 
 ## Documentation
 
@@ -33,7 +34,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | Yes | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
 | `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (`glpat-xxx` personal access token, OAuth2 token, or CI job token) |
-| `GITLAB_READ_ONLY` | No | `false` | Set to `true` to lock the server read-only; write tools are not listed and every write is refused |
+| `GITLAB_READ_ONLY` | No | `false` | Per-server alias for `MCP_READ_ONLY`. Any value other than `false`/`0`/`no`/`off`/empty locks the server read-only: the 57 write tools and write-workflow prompts are not listed; `--read-only` can only raise the lock |
 | `MCP_READ_ONLY` | No | `false` | Same as `GITLAB_READ_ONLY`; shared name across the mcp-* servers. Either being truthy locks read-only, and nothing turns it off at runtime |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
@@ -499,7 +500,7 @@ A successful result carries the response as a JSON object in both the pretty tex
 ## Security Considerations
 
 - **Token scope**: Use minimum required scope. `api` grants full access; prefer `read_api` for read-only deployments.
-- **Read-only mode**: `GITLAB_READ_ONLY=true` (or the shared `MCP_READ_ONLY=true`) locks the server read-only. Write tools are not listed and cannot be enabled from the client — calling one returns "Unknown tool", and the guard refuses any write before an API call. The lock is set once at startup and nothing turns it off at runtime; a falsy value never unlocks it. The `--read-only` flag can only raise the lock (it sets `GITLAB_READ_ONLY=true`); there is no `--no-read-only`, so argv can never unlock a server whose env already locked it. Only a launch the deployer owns enforces it (Claude Code `managed-mcp.json` `env`, container/k8s env). In OAuth deployments pair it with `GITLAB_OAUTH_SCOPES=read_api`.
+- **Read-only mode**: Set `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`) in the launch you control and the server starts locked: the 57 write tools and the write-workflow prompts are not listed, a call to one returns "Unknown tool", and the guard refuses any write that still reaches it. Nothing lifts the lock at runtime — not a `false` from another source, not a `.env` file, not tool arguments; any value other than `false`/`0`/`no`/`off`/empty locks, and `--read-only` can only raise it. The lock is only as strong as the launch: set it where users cannot edit it (a managed MCP config such as Claude Code `managed-mcp.json`, a container, k8s or systemd env, or a hosted HTTP deployment). A user who starts the server themselves controls its environment. In OAuth mode also set `GITLAB_OAUTH_SCOPES=read_api` so each user's GitLab token lacks write scope.
 - **SSL verification**: `true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically return `***MASKED***` for masked variables.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.

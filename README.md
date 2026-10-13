@@ -9,7 +9,7 @@
 
 <!-- mcp-name: io.github.vish288/mcp-gitlab -->
 
-**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API. It gives AI assistants **91 tools**, **7 resources**, and **6 prompts** to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, and code reviews. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client.
+**mcp-gitlab** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the GitLab REST API. It gives AI assistants **91 tools**, **7 resources**, and **6 prompts** to manage projects, merge requests, pipelines, CI/CD variables, approvals, issues, and code reviews. Works with Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, and any MCP-compatible client. Runs in one of two modes: with writes, or locked read-only (`MCP_READ_ONLY=true`) so the 57 write tools are never offered to the model.
 
 Supports GitLab.com and self-hosted GitLab instances (CE/EE). No GitLab Duo or Premium required.
 
@@ -18,6 +18,11 @@ Supports the MCP 2026-07-28 specification, often called MCP 2.0, and stays compa
 Built with [FastMCP](https://github.com/jlowin/fastmcp) 4.x, [httpx](https://www.python-httpx.org/), and [Pydantic](https://docs.pydantic.dev/).
 
 **Install:** `uvx mcp-gitlab` | [PyPI](https://pypi.org/project/mcp-gitlab/) | [MCP Registry](https://registry.modelcontextprotocol.io) | [Changelog](https://github.com/vish288/mcp-gitlab/releases)
+
+```bash
+uvx mcp-gitlab                          # with writes
+MCP_READ_ONLY=true uvx mcp-gitlab       # locked read-only: write tools are not listed
+```
 
 ## 1-Click Installation
 
@@ -36,7 +41,10 @@ Built with [FastMCP](https://github.com/jlowin/fastmcp) 4.x, [httpx](https://www
 ### Claude Code
 
 ```bash
-claude mcp add gitlab -- uvx mcp-gitlab
+# with writes
+claude mcp add gitlab -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx -- uvx mcp-gitlab
+# locked read-only
+claude mcp add gitlab -e MCP_READ_ONLY=true -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx -- uvx mcp-gitlab
 ```
 
 ### Windsurf & IntelliJ
@@ -44,7 +52,7 @@ claude mcp add gitlab -- uvx mcp-gitlab
 **Windsurf:** Add to `~/.codeium/windsurf/mcp_config.json`
 **IntelliJ:** Add to `Settings | Tools | MCP Servers`
 
-> **Note:** The actual server config starts at `gitlab` inside the `mcpServers` object.
+> **Note:** The actual server config starts at `gitlab` inside the `mcpServers` object. Remove `MCP_READ_ONLY` to allow writes.
 
 ```json
 {
@@ -54,7 +62,8 @@ claude mcp add gitlab -- uvx mcp-gitlab
       "args": ["mcp-gitlab"],
       "env": {
         "GITLAB_URL": "https://gitlab.example.com",
-        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
+        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "MCP_READ_ONLY": "true"
       }
     }
   }
@@ -64,8 +73,43 @@ claude mcp add gitlab -- uvx mcp-gitlab
 ### Gemini CLI
 
 ```bash
+# with writes
 gemini mcp add -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
+# locked read-only
+gemini mcp add -s user -e MCP_READ_ONLY=true -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx gitlab uvx mcp-gitlab
 ```
+
+### VS Code
+
+Add to `.vscode/mcp.json`. Remove `MCP_READ_ONLY` to allow writes.
+
+```json
+{
+  "servers": {
+    "gitlab": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-gitlab"],
+      "env": {
+        "GITLAB_URL": "https://gitlab.example.com",
+        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "MCP_READ_ONLY": "true"
+      }
+    }
+  }
+}
+```
+
+### Codex
+
+```bash
+# with writes
+codex mcp add gitlab --env GITLAB_URL=https://gitlab.example.com --env GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx -- uvx mcp-gitlab
+# locked read-only
+codex mcp add gitlab --env MCP_READ_ONLY=true --env GITLAB_URL=https://gitlab.example.com --env GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx -- uvx mcp-gitlab
+```
+
+Drop `MCP_READ_ONLY` to allow writes. On a shared or hosted server put it in the deployer's env, not the client config.
 
 ### pip / uv
 
@@ -81,7 +125,7 @@ uv pip install mcp-gitlab
 |----------|----------|---------|-------------|
 | `GITLAB_URL` | **Yes** | - | GitLab instance URL (e.g. `https://gitlab.example.com`) |
 | `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (see below) |
-| `GITLAB_READ_ONLY` | No | `false` | Set to `true` to lock the server read-only; write tools are not listed and every write is refused |
+| `GITLAB_READ_ONLY` | No | `false` | Per-server alias for `MCP_READ_ONLY`. Any value other than `false`/`0`/`no`/`off`/empty locks the server read-only: the 57 write tools and write-workflow prompts are not listed; `--read-only` can only raise the lock |
 | `MCP_READ_ONLY` | No | `false` | Same as `GITLAB_READ_ONLY`; shared name across the mcp-* servers. Either being truthy locks the server read-only, and nothing can turn it back off at runtime |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
@@ -490,7 +534,7 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 ## Security Considerations
 
 - **Token scope**: Use the minimum required scope. `api` scope grants full access; prefer `read_api` for read-only deployments.
-- **Read-only mode**: Set `GITLAB_READ_ONLY=true` (or the shared `MCP_READ_ONLY=true`) to lock the server read-only. Write tools are not listed and cannot be enabled from the client — calling one returns "Unknown tool", and the guard refuses any write before an API call. The lock is computed once at startup and nothing turns it off at runtime; a falsy value never unlocks it. The `--read-only` flag can only raise the lock (it sets `GITLAB_READ_ONLY=true`); there is no `--no-read-only`, so argv can never unlock a server whose env already locked it. Because only a launch the deployer owns can enforce it, set it there: Claude Code `managed-mcp.json` `env`, or a container/k8s env on a deployer-run HTTP transport. In OAuth deployments combine it with `GITLAB_OAUTH_SCOPES=read_api` so per-user tokens also lack write scope.
+- **Read-only mode**: Set `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`) in the launch you control and the server starts locked: the 57 write tools and the write-workflow prompts are not listed, a call to one returns "Unknown tool", and the guard refuses any write that still reaches it. Nothing lifts the lock at runtime — not a `false` from another source, not a `.env` file, not tool arguments; any value other than `false`/`0`/`no`/`off`/empty locks, and `--read-only` can only raise it. The lock is only as strong as the launch: set it where users cannot edit it (a managed MCP config such as Claude Code `managed-mcp.json`, a container, k8s or systemd env, or a hosted HTTP deployment). A user who starts the server themselves controls its environment. In OAuth mode also set `GITLAB_OAUTH_SCOPES=read_api` so each user's GitLab token lacks write scope.
 - **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
@@ -540,7 +584,36 @@ GITLAB_TOKEN=glpat-xxx uvx mcp-gitlab --gitlab-url https://gitlab.example.com --
 `--auth {token,oauth}` selects the authentication mode (`token` by default);
 `oauth` requires `--transport streamable-http`.
 
+In token mode an HTTP transport serves every tool with the single `GITLAB_TOKEN` to
+anyone who reaches the port, so binding to a non-loopback `--host` is refused unless
+you set `GITLAB_HTTP_BEARER_TOKEN` (≥ 16 chars; clients send it as
+`Authorization: Bearer <token>`) or switch to `--auth oauth` for per-user sign-in.
+The default `127.0.0.1` bind needs neither.
+
 The server loads `.env` files from the working directory automatically via `python-dotenv`.
+
+## Docker
+
+A minimal non-root image builds straight from this repo (uv, the committed `uv.lock`). The image
+defaults to locked read-only (`MCP_READ_ONLY=true`); override it to allow writes.
+
+```bash
+docker build -t mcp-gitlab .
+
+# locked read-only (the image default) — stdio for an MCP client
+docker run --rm -i \
+  -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
+  mcp-gitlab
+
+# allow writes: override the read-only default
+docker run --rm -i \
+  -e MCP_READ_ONLY=false \
+  -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
+  mcp-gitlab
+```
+
+For an HTTP transport, append `--transport streamable-http --host 0.0.0.0`; a non-loopback bind in
+token mode needs `GITLAB_HTTP_BEARER_TOKEN` (≥ 16 chars) or `GITLAB_AUTH=oauth` (see above).
 
 ## FAQ
 
@@ -556,9 +629,9 @@ Yes. It works with GitLab.com and self-hosted GitLab (CE and EE). It needs no Gi
 
 It supports `stdio` (the default) and `streamable-http`. The `sse` transport still works, but the 2026-07-28 specification deprecates it. OAuth 2.1 mode (`--auth oauth`) is available on `streamable-http` only.
 
-### Is mcp-gitlab safe for read-only use?
+### Can I run mcp-gitlab read-only so the assistant cannot merge, push or comment?
 
-Yes. Set `GITLAB_READ_ONLY=true` (or the shared `MCP_READ_ONLY=true`) to lock the server read-only: write tools are not listed, calling one returns "Unknown tool", and the guard refuses any write before an API call. The lock holds for the process and nothing turns it off at runtime, so set it in a launch the deployer owns (Claude Code `managed-mcp.json` `env`, container/k8s env).
+Yes. Start it with `MCP_READ_ONLY=true` (or `GITLAB_READ_ONLY=true`). The 57 write tools and the write-workflow prompts are then not listed at all, so the model never sees them; a call to one returns "Unknown tool", and nothing can turn writes back on while the process runs. Set it in a launch you control — a managed MCP config, a container or systemd env, or a hosted deployment — because a user who starts the server themselves can start it without the variable.
 
 ### What token scopes does it need?
 
