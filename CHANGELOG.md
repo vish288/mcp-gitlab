@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.20.1] - 2026-10-14
+
+### Features
+- feat(http): gate token-mode HTTP binds behind a bearer or loopback (ac12dab)
+
+### Bug Fixes
+- fix(ci): keep retry.sh stdout clean so captured ids aren't corrupted (8ffae69)
+- fix(ci): create the release draft by id, no list-lookup race (45ba241)
+
+### Documentation
+- docs(read-only): align joint-review copy and HTTP bearer surface (1889c2c)
+- docs(read-only): surface writes-or-read-only as a first-class choice (496e84b)
+
+### Other
+- ci: recoverable publish pipeline (split jobs, idempotent targets, reconcile) (1648e4b)
+- build(docker): non-root image defaulting to locked read-only (6ac2f57)
+
+
 ### Notes
 - Source distributions up to and including 0.20.0 accidentally bundled `mcp-publisher.tar.gz` (about 7.3 MB), the MCP Registry publisher binary that the publish workflow downloaded into the build tree before `uv build`. Wheels were never affected and `pip`/`uv` install the wheel, so there is no runtime impact and those versions are not yanked. The bundled file is a third-party build from modelcontextprotocol/registry (MIT, transitioning to Apache-2.0 per its LICENSE) and was redistributed without its licence text. From this release the build asserts that the sdist contains only tracked files.
 
