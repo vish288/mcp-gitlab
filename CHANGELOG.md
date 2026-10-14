@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.2] - 2026-10-14
+
+### Bug Fixes
+- fix(ci): dispatch publish with RELEASE_PAT so reconcile's failure path fires (8f2a55e)
+- fix(ci): dispatch-only publish.yml and wait for PyPI propagation (677d9f0)
+
+
 ## [0.20.1] - 2026-10-14
 
 ### Features
