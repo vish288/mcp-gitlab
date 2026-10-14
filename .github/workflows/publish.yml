@@ -1,9 +1,10 @@
 name: Publish
 run-name: "Publish ${{ github.ref_name }}${{ inputs.fail_at && inputs.fail_at != 'none' && ' [fail_at]' || '' }}"
 
+# Dispatch-only: release.yml dispatches this on the new tag, so exactly one run does the work and
+# honours fail_at. (A RELEASE_PAT tag push used to also trigger a second, input-less run that raced
+# and no-op'd the fail_at hook.) reconcile.yml is the safety net for any tag not dispatched here.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     # Always on a tag ref:  gh workflow run publish.yml --ref refs/tags/vX.Y.Z
     inputs:
@@ -17,7 +18,7 @@ on:
         options: [none, pypi, release, registry]
         default: none
 
-# One run per tag. A duplicate (late push event, reconcile) waits, then finds everything done.
+# One run per tag. A duplicate (reconcile or a manual re-dispatch) waits, then finds everything done.
 concurrency:
   group: publish-${{ github.ref_name }}
   cancel-in-progress: false

@@ -319,10 +319,11 @@ jobs:
           NEXT_VERSION: ${{ steps.next.outputs.version }}
           FAIL_AT: ${{ inputs.publish_fail_at || 'none' }}
         run: |
-          # GITHUB_TOKEN-created workflow_dispatch events always create runs; the tag push event is the duplicate.
+          # publish.yml is dispatch-only (no tag-push trigger), so this is the single run that does the
+          # work and honours fail_at; reconcile.yml is the safety net if this dispatch is lost.
           gh workflow enable reconcile.yml || echo "::warning::could not enable reconcile.yml"
           scripts/ci/retry.sh gh workflow run publish.yml --ref "refs/tags/v$NEXT_VERSION" -f fail_at="$FAIL_AT" \
-            || echo "::warning::could not dispatch publish; the tag push event or reconcile.yml will run it"
+            || echo "::warning::could not dispatch publish; reconcile.yml will run it within 6h"
 
       - name: Dry run summary
         if: ${{ inputs.dry_run }}
