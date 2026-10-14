@@ -16,21 +16,30 @@ PERMANENT="(status|HTTP) (401|403|404|422)|Bad credentials|Resource not accessib
 RATELIMIT='rate limit|retry-after|abuse detection'
 
 retry() {
-  local delays attempt=1 out rc d
+  # Only the successful attempt's stdout reaches our stdout, so `x=$(retry cmd ... --jq .id)`
+  # captures the command's output alone, never a failed attempt's error text or our notices.
+  # Failed-attempt output and all notices go to stderr; classification still reads both streams.
+  local delays attempt=1 out err body rc d
   read -ra delays <<<"${RETRY_DELAYS:-10 30 60 120 240}"
+  ef=$(mktemp)
   while :; do
-    out=$("$@" 2>&1); rc=$?
-    printf '%s\n' "$out"
-    [ "$rc" -eq 0 ] && return 0
-    if ! grep -Eiq "$TRANSIENT" <<<"$out" && grep -Eiq "$PERMANENT" <<<"$out"; then
-      echo "::error::permanent error on attempt $attempt of '$1' (rc=$rc)"; return 1
+    out=$("$@" 2>"$ef"); rc=$?; err=$(cat "$ef")
+    if [ "$rc" -eq 0 ]; then
+      printf '%s\n' "$out"                                   # clean stdout: the command's output only
+      [ -z "$err" ] || printf '%s\n' "$err" >&2             # keep its stderr visible in the log
+      rm -f "$ef"; return 0
     fi
-    [ "$attempt" -ge "${#delays[@]}" ] && { echo "::error::giving up on '$1' after $attempt attempts"; return 2; }
+    body="$out"$'\n'"$err"                                   # classify over both streams, as before
+    { [ -z "$out" ] || printf '%s\n' "$out"; [ -z "$err" ] || printf '%s\n' "$err"; } >&2
+    if ! grep -Eiq "$TRANSIENT" <<<"$body" && grep -Eiq "$PERMANENT" <<<"$body"; then
+      echo "::error::permanent error on attempt $attempt of '$1' (rc=$rc)" >&2; rm -f "$ef"; return 1
+    fi
+    [ "$attempt" -ge "${#delays[@]}" ] && { echo "::error::giving up on '$1' after $attempt attempts" >&2; rm -f "$ef"; return 2; }
     d=${delays[$((attempt - 1))]}
-    if grep -Eiq "$RATELIMIT" <<<"$out"; then
+    if grep -Eiq "$RATELIMIT" <<<"$body"; then
       d=$(( d > ${RETRY_RATELIMIT_MIN:-60} ? d : ${RETRY_RATELIMIT_MIN:-60} ))   # secondary limits: wait at least a minute
     fi
-    echo "::notice::attempt $attempt of '$1' failed (rc=$rc); retrying in ${d}s"
+    echo "::notice::attempt $attempt of '$1' failed (rc=$rc); retrying in ${d}s" >&2
     sleep "$d"; attempt=$((attempt + 1))
   done
 }
@@ -44,9 +53,14 @@ self_test() {
     echo "$1"; return 1
   }
   check() {  # name want_rc want_attempts message failures
-    echo 0 > "$counter"; retry flaky "$4" "$5" > /dev/null; local rc=$?
+    echo 0 > "$counter"; retry flaky "$4" "$5" > /dev/null 2>&1; local rc=$?
     if [ "$rc" = "$2" ] && [ "$(cat "$counter")" = "$3" ]; then echo "ok   $1"; else
       echo "FAIL $1: rc=$rc attempts=$(cat "$counter") (want rc=$2 attempts=$3)"; rm -f "$counter"; exit 1; fi
+  }
+  noisy() {  # fails $2 times printing noise to both streams, then succeeds printing "12345" to stdout
+    local c; c=$(cat "$counter"); echo $((c + 1)) > "$counter"
+    if [ "$c" -ge "$2" ]; then echo 12345; return 0; fi
+    echo "$1"; echo "noise on stderr" >&2; return 1
   }
   check transient-then-ok       0 3 "publish failed: server returned status 503: upstream" 2
   check permanent-401           1 1 "HTTP 401: Bad credentials" 9
@@ -58,12 +72,16 @@ self_test() {
   check duplicate-stops         1 1 'publish failed: server returned status 400: {"errors":[{"message":"io.github.x/y@1.0.0 already exists"}]}' 9
   check dispatch-422-stops      1 1 "HTTP 422: Workflow does not have 'workflow_dispatch' trigger" 9
   check unknown-retries         0 2 "something odd happened" 1
+  # a failed attempt's noise must not leak into captured stdout: one transient failure then success
+  local got; echo 0 > "$counter"; got=$(retry noisy "dial tcp: connection refused" 1 2>/dev/null)
+  if [ "$got" = "12345" ]; then echo "ok   clean-stdout"; else
+    echo "FAIL clean-stdout: got '$got' want '12345'"; rm -f "$counter"; exit 1; fi
   rm -f "$counter"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  trap 'echo "interrupted"; exit 130' INT
-  trap 'exit 143' TERM
+  trap 'rm -f "${ef:-}"; echo "interrupted" >&2; exit 130' INT
+  trap 'rm -f "${ef:-}"; exit 143' TERM
   if [ "${1:-}" = --self-test ]; then self_test; exit 0; fi
   [ $# -gt 0 ] || { echo "usage: retry.sh CMD... | --self-test" >&2; exit 64; }
   retry "$@"

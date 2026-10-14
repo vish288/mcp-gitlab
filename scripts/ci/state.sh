@@ -92,10 +92,15 @@ cmd_pypi_fetch() {   # DIR
   rm -f "$f"; ls -l "$dir"
 }
 cmd_release_create() {
-  local id highest latest f up
+  local id highest latest f up raw flat ids
   # Idempotency: remove any leftover drafts for TAG from earlier attempts (handles 0, 1 or >1).
-  # The releases list is eventually consistent, so fetch it under retry before deciding.
-  for id in $(draft_ids "$("$RETRY" gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq 'add // []')" "$TAG"); do
+  # The releases list is eventually consistent, so fetch it under retry; fail loudly if the
+  # fetch or its JSON is bad rather than silently skipping cleanup inside a for-word-list.
+  raw=$("$RETRY" gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100") \
+    || { echo "::error::could not list releases for draft cleanup"; return 1; }
+  flat=$(jq 'add // []' <<<"$raw") || { echo "::error::releases list is not valid JSON"; return 1; }
+  ids=$(draft_ids "$flat" "$TAG")
+  for id in $ids; do
     echo "deleting leftover draft release $id"; "$RETRY" gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
   done
   rm -rf assets; cmd_pypi_fetch assets
@@ -107,10 +112,13 @@ cmd_release_create() {
     || { echo "::error::tag $TAG does not exist on $GITHUB_REPOSITORY"; return 1; }
   # Create the draft via the API so we get its id directly: no post-create list lookup, no
   # eventual-consistency race (a drafts list may not yet include the release we just made).
+  # ponytail: POST/upload are not idempotent, so a retry after a half-done attempt can leave an
+  # orphan draft; it is harmless (the next run's cleanup deletes it) and 422 already_exists stays
+  # permanent in retry.sh, so a retry never double-creates.
   id=$("$RETRY" gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
         -f tag_name="$TAG" -f name="$TAG" -F draft=true -F generate_release_notes=true --jq .id) \
     || { echo "::warning::draft creation failed; the next run deletes the draft and retries"; return 0; }
-  [ -n "$id" ] || { echo "::error::draft creation returned no id for $TAG"; return 1; }
+  [[ $id =~ ^[0-9]+$ ]] || { echo "::error::draft creation returned a non-numeric id '$id' for $TAG"; return 1; }
   # Upload the PyPI files to that release id (drafts are addressable by id, not by tag).
   up="https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets"
   for f in assets/*; do
