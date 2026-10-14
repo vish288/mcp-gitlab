@@ -5,7 +5,7 @@
 #   state.sh registry  TAG [--wait S] [--require STATE]   -> state=done|missing|inactive          (exit 2 on inactive)
 #   state.sh all       TAG            -> pypi=.. release=.. registry=..   exit 0 all done, 2 unfixable, 1 incomplete
 #   state.sh pypi-fetch TAG DIR       download the PyPI files; verify sha256 and trusted-publisher provenance
-#   state.sh release-create TAG       delete leftover drafts, fetch from PyPI, create a draft then publish it (latest only for the highest tag)
+#   state.sh release-create TAG       delete leftover drafts, fetch from PyPI, create a draft by id, upload the files, then publish it (latest only for the highest tag)
 #   state.sh registry-publish TAG     set the version in server.json, validate, login + publish under retry
 #   state.sh gate JOB STATE           step summary line; honours the FAIL_AT test hook (dispatch, attempt 1, state != done)
 #   state.sh --self-test              classifier fixtures, no network
@@ -42,6 +42,9 @@ classify_registry() {   # $1 HTTP code, $2 body
     200) [ "$(jq -r '._meta["io.modelcontextprotocol.registry/official"].status // empty' <<<"$2")" = active ] && echo "done" || echo inactive ;;
     *) echo "::error::registry returned HTTP $1" >&2; return 1 ;;
   esac
+}
+draft_ids() {   # $1 releases JSON array, $2 tag -> ids of draft releases for the tag, newest id first (one per line)
+  jq -r --arg t "$2" '[.[]|select(.tag_name==$t and .draft)]|sort_by(.id)|reverse|.[].id' <<<"$1"
 }
 
 # ---- live state ----
@@ -89,17 +92,31 @@ cmd_pypi_fetch() {   # DIR
   rm -f "$f"; ls -l "$dir"
 }
 cmd_release_create() {
-  local id highest latest
-  for id in $(releases_json | jq -r --arg t "$TAG" '.[]|select(.tag_name==$t and .draft)|.id'); do
+  local id highest latest f up
+  # Idempotency: remove any leftover drafts for TAG from earlier attempts (handles 0, 1 or >1).
+  # The releases list is eventually consistent, so fetch it under retry before deciding.
+  for id in $(draft_ids "$("$RETRY" gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq 'add // []')" "$TAG"); do
     echo "deleting leftover draft release $id"; "$RETRY" gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
   done
   rm -rf assets; cmd_pypi_fetch assets
   highest=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/tags?per_page=100" | jq -r 'add // [] | .[].name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
   latest=false; [ "$TAG" = "$highest" ] && latest=true
-  gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes assets/* \
+  # Refuse if the tag does not exist on the remote (the old --verify-tag guard); a bare POST would
+  # otherwise auto-create a tag at the default branch.
+  "$RETRY" gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha >/dev/null \
+    || { echo "::error::tag $TAG does not exist on $GITHUB_REPOSITORY"; return 1; }
+  # Create the draft via the API so we get its id directly: no post-create list lookup, no
+  # eventual-consistency race (a drafts list may not yet include the release we just made).
+  id=$("$RETRY" gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+        -f tag_name="$TAG" -f name="$TAG" -F draft=true -F generate_release_notes=true --jq .id) \
     || { echo "::warning::draft creation failed; the next run deletes the draft and retries"; return 0; }
-  id=$(releases_json | jq -r --arg t "$TAG" '[.[]|select(.tag_name==$t and .draft)] | if length==1 then .[0].id else empty end')
-  [ -n "$id" ] || { echo "::error::expected exactly one draft for $TAG"; return 1; }
+  [ -n "$id" ] || { echo "::error::draft creation returned no id for $TAG"; return 1; }
+  # Upload the PyPI files to that release id (drafts are addressable by id, not by tag).
+  up="https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets"
+  for f in assets/*; do
+    "$RETRY" gh api --method POST "$up?name=$(basename "$f")" -H "Content-Type: application/octet-stream" --input "$f" >/dev/null \
+      || { echo "::error::uploading $(basename "$f") to release $id failed"; return 1; }
+  done
   "$RETRY" gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F draft=false -f make_latest="$latest" >/dev/null \
     || echo "::warning::publishing draft $id failed; the confirm step decides"
 }
@@ -124,7 +141,7 @@ cmd_all() {
 }
 
 self_test() {
-  local bad=0 rel
+  local bad=0 rel drafts
   t() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$3' want '$2'"; bad=1; fi; }
   t pypi-done     "done"   "$(classify_pypi '{"urls":[{"packagetype":"bdist_wheel"},{"packagetype":"sdist"}]}')"
   t pypi-partial  partial  "$(classify_pypi '{"urls":[{"packagetype":"sdist"}]}')"
@@ -139,6 +156,12 @@ self_test() {
   t reg-done      "done"   "$(classify_registry 200 '{"_meta":{"io.modelcontextprotocol.registry/official":{"status":"active"}}}')"
   t reg-inactive  inactive "$(classify_registry 200 '{"_meta":{"io.modelcontextprotocol.registry/official":{"status":"deleted"}}}')"
   t reg-missing   missing  "$(classify_registry 404 '{"status":404,"detail":"Server not found"}')"
+  # draft lookup for release-create idempotency: 0 (create→immediate lookup miss), 1 (reuse), >1 (cleanup)
+  drafts='[{"tag_name":"v2.0.0","draft":true,"id":11},{"tag_name":"v2.0.0","draft":true,"id":9},
+           {"tag_name":"v2.0.0","draft":false,"id":5},{"tag_name":"v2.0.1","draft":true,"id":8}]'
+  t draft-miss    ""       "$(draft_ids "$drafts" v9.9.9)"
+  t draft-one     "8"      "$(draft_ids "$drafts" v2.0.1)"
+  t draft-many    $'11\n9' "$(draft_ids "$drafts" v2.0.0)"
   exit $bad
 }
 
