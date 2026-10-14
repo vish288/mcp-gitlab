@@ -204,10 +204,16 @@ gh workflow run release.yml -f bump=minor -f dry_run=true  # preview changelog, 
    `llms-full.txt`, `server.json`, `gemini-extension.json`; regenerates `uv.lock`; prepends a
    CHANGELOG.md entry. The release commit is created with `GITHUB_TOKEN` and no author/committer,
    so GitHub signs it as `github-actions[bot]` (Verified); the job hard-fails if it is not. The
-   `main` and tag refs are then moved with `RELEASE_PAT` (the Admin ruleset bypass, and the tag
-   push triggers `publish.yml`).
-2. `publish.yml` (triggered by a `v*` tag push) — builds the wheel, publishes to PyPI, creates the
-   GitHub Release with auto-generated notes, then publishes to the MCP Registry.
+   `main` and tag refs are then moved with `RELEASE_PAT` (the Admin ruleset bypass); `release.yml`
+   then dispatches `publish.yml`, and the PAT's tag push is a duplicate that no-ops.
+2. `publish.yml` runs as split, idempotent jobs (`status → build → pypi → github-release →
+   registry`): each target is checked first and written only when not already done, so PyPI, the
+   GitHub release and the MCP Registry each complete independently and recoverably.
+3. Recovery of a failed publish is `gh run rerun <id> --failed` or `gh workflow run publish.yml
+   --ref refs/tags/vX.Y.Z`; both are no-ops for targets that are already done.
+4. `reconcile.yml` does this unattended — about 5 min after a failed publish run, then every 6 h on
+   a schedule — scanning the last three tags and dispatching `publish.yml` as needed, capped at 8
+   failed attempts per tag before it asks for a human.
 
 Rules:
 - Never edit the `pyproject.toml` version directly — the workflow owns it.

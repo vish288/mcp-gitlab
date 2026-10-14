@@ -1,5 +1,8 @@
 # Changelog
 
+### Notes
+- Source distributions up to and including 0.20.0 accidentally bundled `mcp-publisher.tar.gz` (about 7.3 MB), the MCP Registry publisher binary that the publish workflow downloaded into the build tree before `uv build`. Wheels were never affected and `pip`/`uv` install the wheel, so there is no runtime impact and those versions are not yanked. The bundled file is a third-party build from modelcontextprotocol/registry (MIT, transitioning to Apache-2.0 per its LICENSE) and was redistributed without its licence text. From this release the build asserts that the sdist contains only tracked files.
+
 ## [0.20.0] - 2026-10-13
 
 ### Features
