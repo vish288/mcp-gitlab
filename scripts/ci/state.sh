@@ -58,7 +58,7 @@ pypi_wait() {   # FILE -> prints the final HTTP code; polls until PyPI serves th
     code=$(pypi_get "$f")
     [ "$code" = 200 ] && { echo "$code"; return 0; }
     [ "$(date +%s)" -ge "$deadline" ] && { echo "$code"; return 1; }
-    sleep "$d"; [ "$d" -ge 60 ] || d=$((d * 2))
+    sleep "$d"; d=$(( d * 2 > 60 ? 60 : d * 2 ))
   done
 }
 state_pypi() {

@@ -31,7 +31,7 @@ for t in $(gh api --paginate --slurp "repos/$R/tags?per_page=100" | jq -r 'add /
     if   [ "$tagv" != "${t#v}" ]; then act="invalid: pyproject at the tag says $tagv; needs a human"
     elif [ "$active" -gt 0 ]; then act="publish run in progress"
     elif [ "$failed" -ge "$CAP" ]; then act="$failed failed runs (cap $CAP); needs a human"
-    elif [ "${RUN_EVENT:-}" = workflow_run ] && [ "$failed" -gt 2 ]; then act="left to the 6-hourly schedule ($failed failures so far)"   # push + release dispatch = 2 runs per release
+    elif [ "${RUN_EVENT:-}" = workflow_run ] && [ "$failed" -gt 1 ]; then act="left to the 6-hourly schedule ($failed failures so far)"   # one dispatch run per release; the failure trigger retries once, the rest is the cron
     elif dispatch=$(scripts/ci/retry.sh gh workflow run publish.yml --ref "refs/tags/$t" 2>&1); then act=dispatched
     elif grep -q "workflow_dispatch" <<<"$dispatch"; then act="pre-rollout tag; cannot dispatch"
     else act="dispatch failed: $(tail -n 1 <<<"$dispatch")"; rc=1

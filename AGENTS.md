@@ -220,7 +220,7 @@ gh workflow run release.yml -f bump=minor -f dry_run=true  # preview changelog, 
    --ref refs/tags/vX.Y.Z`; both are no-ops for targets that are already done.
 4. `reconcile.yml` does this unattended — about 5 min after a failed publish run, then every 6 h on
    a schedule — scanning the last three tags and dispatching `publish.yml` as needed, capped at 8
-   failed attempts per tag before it asks for a human.
+   failed attempts per tag before it asks for a human. A tag pushed by hand outside release.yml publishes only via a manual `gh workflow run publish.yml --ref refs/tags/vX.Y.Z` or the reconcile cron (there is no tag-push trigger).
 
 Rules:
 - Never edit the `pyproject.toml` version directly — the workflow owns it.
