@@ -291,8 +291,9 @@ jobs:
           echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
       # Step B — only on a real release. RELEASE_PAT is required: the Admin bypass
-      # on the main ruleset lets a direct push through, and the tag push triggers
-      # publish.yml. The fast-forward (force=false) fails if main moved mid-run.
+      # on the main ruleset lets a direct push through. (publish.yml no longer triggers
+      # on the tag push; the next step dispatches it.) The fast-forward (force=false)
+      # fails if main moved mid-run.
       - name: Push release commit and tag
         if: ${{ !inputs.dry_run }}
         env:
@@ -315,15 +316,18 @@ jobs:
       - name: Dispatch publish and keep reconcile enabled
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # RELEASE_PAT, not GITHUB_TOKEN: a Publish run started via GITHUB_TOKEN does not fire
+          # reconcile.yml's `workflow_run` trigger, so a failed publish would wait for the 6h cron
+          # instead of the ~5 min failure path. The PAT needs Actions: write to dispatch.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           NEXT_VERSION: ${{ steps.next.outputs.version }}
           FAIL_AT: ${{ inputs.publish_fail_at || 'none' }}
         run: |
           # publish.yml is dispatch-only (no tag-push trigger), so this is the single run that does the
-          # work and honours fail_at; reconcile.yml is the safety net if this dispatch is lost.
+          # work and honours fail_at; reconcile.yml retries a failed run ~5 min later, then on a 6h cron.
           gh workflow enable reconcile.yml || echo "::warning::could not enable reconcile.yml"
           scripts/ci/retry.sh gh workflow run publish.yml --ref "refs/tags/v$NEXT_VERSION" -f fail_at="$FAIL_AT" \
-            || echo "::warning::could not dispatch publish; reconcile.yml will run it within 6h"
+            || { echo "::error::could not dispatch publish; run: gh workflow run publish.yml --ref refs/tags/v$NEXT_VERSION (reconcile.yml cron also retries)"; exit 1; }
 
       - name: Dry run summary
         if: ${{ inputs.dry_run }}
