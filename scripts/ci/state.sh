@@ -49,6 +49,18 @@ draft_ids() {   # $1 releases JSON array, $2 tag -> ids of draft releases for th
 
 # ---- live state ----
 pypi_get() { fetch "https://pypi.org/pypi/$PKG/$VER/json" "$1"; }   # FILE -> prints the HTTP code
+pypi_wait() {   # FILE -> prints the final HTTP code; polls until PyPI serves this version (CDN lag after upload)
+  # Bounded (PYPI_WAIT s, default 300) with backoff. A 404 here means "not propagated yet", never
+  # permanent: this is the ONLY place a PyPI 404 is retried. retry.sh still treats 404 as permanent
+  # everywhere else, so only the just-uploaded-release read tolerates the Fastly/CDN lag.
+  local f=$1 code d=5 deadline=$(( $(date +%s) + ${PYPI_WAIT:-300} ))
+  while :; do
+    code=$(pypi_get "$f")
+    [ "$code" = 200 ] && { echo "$code"; return 0; }
+    [ "$(date +%s)" -ge "$deadline" ] && { echo "$code"; return 1; }
+    sleep "$d"; [ "$d" -ge 60 ] || d=$((d * 2))
+  done
+}
 state_pypi() {
   local f code; f=$(mktemp); code=$(pypi_get "$f")
   case "$code" in 200) classify_pypi "$(cat "$f")" ;; 404) echo missing ;; *) echo "::error::pypi.org HTTP $code" >&2; rm -f "$f"; return 1 ;; esac
@@ -81,8 +93,10 @@ poll() {   # FN WAIT REQUIRE -> prints state=..., exits 1 if REQUIRE unmet, 2 if
 # ---- write paths ----
 cmd_pypi_fetch() {   # DIR
   local dir=$1 f code name url sha pub
-  mkdir -p "$dir"; f=$(mktemp); code=$(pypi_get "$f")
-  [ "$code" = 200 ] || { echo "::error::$PKG $VER is not on PyPI (HTTP $code)"; return 1; }
+  # Wait for PyPI to serve the version: github-release runs right after the pypi job, when the
+  # just-uploaded files can still 404 on the CDN (observed: mcp-gitlab run 38502039947).
+  mkdir -p "$dir"; f=$(mktemp); code=$(pypi_wait "$f") || true
+  [ "$code" = 200 ] || { echo "::error::$PKG $VER is not on PyPI (HTTP $code) after ${PYPI_WAIT:-300}s"; return 1; }
   while IFS=$'\t' read -r name url sha; do
     "${CURL[@]}" -o "$dir/$name" "$url"
     echo "$sha  $dir/$name" | sha256sum -c -
@@ -149,7 +163,7 @@ cmd_all() {
 }
 
 self_test() {
-  local bad=0 rel drafts
+  local bad=0 rel drafts stub body n got rc
   t() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$3' want '$2'"; bad=1; fi; }
   t pypi-done     "done"   "$(classify_pypi '{"urls":[{"packagetype":"bdist_wheel"},{"packagetype":"sdist"}]}')"
   t pypi-partial  partial  "$(classify_pypi '{"urls":[{"packagetype":"sdist"}]}')"
@@ -170,6 +184,28 @@ self_test() {
   t draft-miss    ""       "$(draft_ids "$drafts" v9.9.9)"
   t draft-one     "8"      "$(draft_ids "$drafts" v2.0.1)"
   t draft-many    $'11\n9' "$(draft_ids "$drafts" v2.0.0)"
+  # pypi_wait: PATH-stub curl + sleep so the propagation poll runs with no network and no real sleeps.
+  stub=$(mktemp -d); body=$(mktemp); n=$(mktemp)
+  cat > "$stub/sleep" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+  cat > "$stub/curl" <<'STUB'
+#!/usr/bin/env bash
+# fake curl: writes the -o target, prints an HTTP code; 404 until call CURL_OK_AT, then 200.
+out=; while [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done
+c=$(( $(cat "$CURL_N" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$CURL_N"
+: > "${out:-/dev/null}"
+if [ "$c" -ge "${CURL_OK_AT:-1}" ]; then echo 200; else echo 404; fi
+STUB
+  chmod +x "$stub/sleep" "$stub/curl"
+  echo 0 > "$n"
+  got=$( export PATH="$stub:$PATH" CURL_N="$n" CURL_OK_AT=3 PKG=x VER=1; pypi_wait "$body" ) && rc=0 || rc=$?
+  t pypi_wait-propagates "200 0" "$got $rc"                # two 404s then 200 -> success
+  echo 0 > "$n"
+  got=$( export PATH="$stub:$PATH" CURL_N="$n" CURL_OK_AT=99 PYPI_WAIT=0 PKG=x VER=1; pypi_wait "$body" ) && rc=0 || rc=$?
+  t pypi_wait-timeout "404 1" "$got $rc"                   # never propagates within the window -> rc 1
+  rm -rf "$stub"; rm -f "$body" "$n"
   exit $bad
 }
 
@@ -179,6 +215,8 @@ case "${1:-}" in
 esac
 CMD=${1:?command}; TAG=${2:?tag}; shift 2
 VER=${TAG#v}
+# Outside CI GITHUB_REPOSITORY is unset; derive it so local runs of release/all do not trip `set -u`.
+: "${GITHUB_REPOSITORY:=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)}"
 PKG=$("${PY[@]}" -c 'import tomllib;print(tomllib.load(open("pyproject.toml","rb"))["project"]["name"])')
 SERVER=$(jq -r .name server.json)
 WAIT=0; REQ=; ARG=
