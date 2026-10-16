@@ -227,9 +227,9 @@ Rules:
 - Never create tags manually — the workflow creates them.
 - Commit messages must follow Conventional Commits (`feat:`, `fix:`, `docs:`, …) for changelog generation.
 - `github-actions[bot]` authors the release commit with the message `chore(release): X.Y.Z`.
-- Release commits are GitHub-verified; PR commits merged via rebase show as unsigned on `main`
-  by GitHub design (rebase rewrites each commit with a new committer and no signature) — PR review
-  plus required checks are the integrity control there.
+- PR commits land signed via a local signed rebase + fast-forward push of the branch to `main`,
+  never GitHub's rebase-merge, squash, or merge-commit buttons; the release commit is GitHub-signed
+  (`github-actions[bot]`, Verified). `main` requires signed commits and linear history.
 
 ## Documentation Freshness (mandatory)
 
