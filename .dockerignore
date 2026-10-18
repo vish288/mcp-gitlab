@@ -1,19 +1,19 @@
-# Keep the build context to the source and lockfile the image needs.
 .git
 .github
 .venv
-**/__pycache__
-**/*.pyc
+.internal
+.claude
+__pycache__
+*.pyc
+*.pyo
 .pytest_cache
 .ruff_cache
 .coverage
 htmlcov
+tests
+evaluations
 dist
 build
 *.egg-info
 .env
 .env.*
-tests
-docs
-.internal
-.claude

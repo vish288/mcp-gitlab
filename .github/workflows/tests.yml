@@ -1,24 +1,8 @@
 name: Tests
-on:
-  push:
-  pull_request:
-  workflow_call:
+# Stub: calls the reusable workflow in vish288/.github, pinned to a release commit SHA.
+on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: uv sync --all-extras
-      - run: uv run pytest --cov --cov-report=xml --cov-fail-under=98
-      - name: Upload coverage
-        if: matrix.python-version == '3.13'
-        uses: codecov/codecov-action@v7
-        with:
-          file: coverage.xml
-        continue-on-error: true
+    uses: vish288/.github/.github/workflows/tests.yml@e433546a751a1b2947e0216d24fd1ad7b1bf94de # v1.1.0
+    with:
+      coverage_min: 98

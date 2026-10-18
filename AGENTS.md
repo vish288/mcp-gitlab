@@ -44,9 +44,9 @@ uv run ruff check .
 uv run ruff format --check .   # CI runs --check; formatting drift fails the build
 ```
 
-`pytest` uses `asyncio_mode = "auto"` — async tests need no marker. Ruff line length is 100,
-target py310; lint rules include `S` (bandit), `EM`, `N`, `UP`. `tests/**` waives `S101`,
-`S105`, `S106`.
+`pytest` uses `asyncio_mode = "auto"` — async tests need no marker. Ruff config lives in
+`ruff.toml` (line length 100, target py310); lint rules include `S` (bandit), `EM`, `N`, `UP`.
+`tests/**` waives `S101`, `S105`, `S106`, `S104`.
 
 Docker (no CI job — smoke-check by hand): `docker build -t mcp-gitlab .` then
 `docker run --rm mcp-gitlab --help` exits 0. The image builds from the repo with `uv sync
@@ -200,6 +200,15 @@ Token-mode HTTP on a non-loopback `--host` requires `GITLAB_HTTP_BEARER_TOKEN` (
 
 Releases run through GitHub Actions — never bump versions manually.
 
+The six workflows (`tests`, `lint`, `link-check`, `release`, `publish`, `reconcile`) are thin
+stubs that call reusable `workflow_call` workflows in
+[`vish288/.github`](https://github.com/vish288/.github), pinned by commit SHA with a `# vX.Y.Z`
+comment so Dependabot bumps them. The shared `scripts/ci/*.sh` and `scripts/derive_artifacts.py`
+live there too; this repo no longer carries its own copies. The stubs are Copier-owned
+(`.copier-answers.yml`): change CI in `vish288/.github` and run `copier update` here, not by
+editing these files directly. A CI fix is one PR in `vish288/.github` plus a tag bump, not a
+change in each server.
+
 ```bash
 gh workflow run release.yml -f bump=minor                  # 0.9.0 → 0.10.0
 gh workflow run release.yml -f bump=patch                  # 0.9.0 → 0.9.1
@@ -214,9 +223,13 @@ gh workflow run release.yml -f bump=minor -f dry_run=true  # preview changelog, 
    so GitHub signs it as `github-actions[bot]` (Verified); the job hard-fails if it is not. The
    `main` and tag refs are then moved with `RELEASE_PAT` (the Admin ruleset bypass); `release.yml`
    then dispatches `publish.yml`, and the PAT's tag push no longer triggers publish (publish.yml is dispatch-only).
-2. `publish.yml` runs as split, idempotent jobs (`status → build → pypi → github-release →
-   registry`): each target is checked first and written only when not already done, so PyPI, the
-   GitHub release and the MCP Registry each complete independently and recoverably.
+2. `publish.yml` runs as split, idempotent jobs: the reusable `publish-prepare.yml`
+   (`status → build`), then a **local top-level `pypi` job** with `environment: pypi` (PyPI trusted
+   publishing checks the OIDC `job_workflow_ref`, so the `pypa/gh-action-pypi-publish` job must stay
+   in this repo's `publish.yml`), then the reusable `publish-finish.yml`
+   (`confirm-pypi → github-release → registry`). Each target is checked first and written only when
+   not already done, so PyPI, the GitHub release and the MCP Registry each complete independently
+   and recoverably.
 3. Recovery of a failed publish is `gh run rerun <id> --failed` or `gh workflow run publish.yml
    --ref refs/tags/vX.Y.Z`; both are no-ops for targets that are already done.
 4. `reconcile.yml` does this unattended — about 5 min after a failed publish run, then every 6 h on
@@ -245,6 +258,12 @@ the same commit:
 
 Checklist: counts match the actual registered tools/resources/prompts; the category list is
 complete; new entries appear in the right sections with parameters and annotations.
+
+`llms.txt` and `gemini-extension.json` are derived from `llms-full.txt` / `server.json` by
+`derive_artifacts.py`, which now lives in [`vish288/.github`](https://github.com/vish288/.github)
+and is run by the `release.yml` pipeline (with this server's `\n## Configuration` split marker).
+Do not hand-edit them; to preview locally, run the script from a `vish288/.github` checkout against
+this repo root: `LLMS_SPLIT_MARKER=$'\n## Configuration' python /path/to/.github/scripts/derive_artifacts.py`.
 
 ## Known Limitations
 

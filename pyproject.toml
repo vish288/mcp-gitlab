@@ -84,17 +84,6 @@ dev = [
     "ruff>=0.3.0",
 ]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-
-[tool.ruff.lint]
-select = ["E", "F", "B", "W", "I", "N", "UP", "S", "C4", "EM", "ISC"]
-ignore = []
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
