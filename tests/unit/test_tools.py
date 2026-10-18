@@ -956,6 +956,20 @@ class TestOptionalParams:
         """Gap (a): a multi-line comment builds a ``line_range`` with start/end keyed by
         ``line_range_type`` (``gitlab.py`` ``_text_position``); pin it on the wire."""
         client, router = tool_client
+        # new_line=50 alone now triggers a /diffs lookup; line 50 is an added line so the
+        # resolved anchor leaves old_line unset and the wire stays byte-identical.
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "old_path": "src/main.py",
+                        "new_path": "src/main.py",
+                        "diff": "@@ -48,3 +48,4 @@\n ctx48\n ctx49\n+new50\n ctx51\n",
+                    }
+                ],
+            )
+        )
         route = router.post("/projects/123/merge_requests/1/discussions").mock(
             return_value=Response(201, json={"id": "d2"})
         )
@@ -991,6 +1005,138 @@ class TestOptionalParams:
                 },
             },
         }
+
+    async def test_create_mr_discussion_explicit_shas_resolves_line(self, tool_client):  # T12
+        client, router = tool_client
+        versions = router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(200, json=[])
+        )
+        router._assert_all_called = False
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/discussions").mock(
+            return_value=Response(201, json={"id": "d3"})
+        )
+        await client.call_tool(
+            "gitlab_create_mr_discussion",
+            {
+                "project_id": "123",
+                "mr_iid": 1,
+                "body": "nit",
+                "new_path": "app.py",
+                "new_line": 13,
+                "base_sha": "aaa",
+                "head_sha": "bbb",
+                "start_sha": "ccc",
+            },
+        )
+        assert versions.called is False
+        assert json.loads(route.calls.last.request.content)["position"]["old_line"] == 12
+
+    async def test_create_mr_discussion_autofills_shas(self, tool_client):  # T13
+        client, router = tool_client
+        versions = router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "base_commit_sha": "base1",
+                        "head_commit_sha": "head1",
+                        "start_commit_sha": "start1",
+                    }
+                ],
+            )
+        )
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/discussions").mock(
+            return_value=Response(201, json={"id": "d4"})
+        )
+        await client.call_tool(
+            "gitlab_create_mr_discussion",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 11},
+        )
+        assert versions.called is True
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos["base_sha"] == "base1"
+        assert pos["new_line"] == 11
+
+    async def test_create_mr_discussion_outside_diff_refused(self, tool_client):  # T14
+        client, router = tool_client
+        router._assert_all_called = False
+        router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "base_commit_sha": "base1",
+                        "head_commit_sha": "head1",
+                        "start_commit_sha": "start1",
+                    }
+                ],
+            )
+        )
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/discussions").mock(
+            return_value=Response(201, json={"id": "d5"})
+        )
+        result = await client.call_tool(
+            "gitlab_create_mr_discussion",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 5},
+            raise_on_error=False,
+        )
+        assert "10-17" in _err_body(result)["error"]
+        assert post.called is False
+
+    async def test_create_mr_discussion_body_only_no_gets(self, tool_client):  # T15
+        client, router = tool_client
+        router._assert_all_called = False
+        versions = router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(200, json=[])
+        )
+        diffs = router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(200, json=[])
+        )
+        route = router.post("/projects/123/merge_requests/1/discussions").mock(
+            return_value=Response(201, json={"id": "d6"})
+        )
+        await client.call_tool(
+            "gitlab_create_mr_discussion",
+            {"project_id": "123", "mr_iid": 1, "body": "general comment"},
+        )
+        assert versions.called is False
+        assert diffs.called is False
+        assert json.loads(route.calls.last.request.content) == {"body": "general comment"}
+
+    async def test_create_mr_discussion_path_without_line_refused(self, tool_client):
+        # new_path but no line is an unresolvable anchor, not a body-only comment: refuse
+        # before any API call (kills the "silently downgrade to body-only" mutation).
+        client, router = tool_client
+        router._assert_all_called = False
+        versions = router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(200, json=[])
+        )
+        post = router.post("/projects/123/merge_requests/1/discussions").mock(
+            return_value=Response(201, json={"id": "d7"})
+        )
+        result = await client.call_tool(
+            "gitlab_create_mr_discussion",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py"},
+            raise_on_error=False,
+        )
+        assert "needs new_line or old_line" in _err_body(result)["error"]
+        assert versions.called is False
+        assert post.called is False
 
 
 # ═══════════════════════════════════════════════════════

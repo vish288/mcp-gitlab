@@ -471,13 +471,22 @@ async def _inline_position(
     """Resolve the ``position`` hash for an inline MR comment from the MR's diff.
 
     Shared by ``gitlab_create_draft_note`` and ``gitlab_create_mr_discussion``. Returns
-    None for a body-only comment (no ``new_path`` or no line). Otherwise SHAs are filled
-    from the latest version first and fail closed if still missing; then, when exactly one
-    line number is given, the file's diff is fetched to fill the paired line and ``old_path``.
-    Every unresolvable anchor raises ``GitLabError`` before any POST.
+    None only for a genuine body-only comment (no ``new_path`` and no ``line_range_*``).
+    A ``new_path`` (or a ``line_range_*``) with no line number is refused rather than
+    silently downgraded to body-only. Otherwise SHAs are filled from the latest version
+    first and fail closed if still missing; then, when exactly one line number is given,
+    the file's diff is fetched to fill the paired line and ``old_path``. Every unresolvable
+    anchor raises ``GitLabError`` before any POST.
     """
-    if not new_path or (new_line is None and old_line is None):
-        return None
+    if new_line is None and old_line is None:
+        if not new_path and line_range_start_line is None and line_range_end_line is None:
+            return None
+        msg = (
+            f"inline comment on {(new_path or old_path)!r} needs new_line or old_line; "
+            f"pass one to anchor the comment (both for an unchanged line), or omit new_path "
+            f"for a body-only comment"
+        )
+        raise GitLabError(msg)
     if not (base_sha and head_sha and start_sha):
         versions = await client.get(f"/projects/{enc}/merge_requests/{mr_iid}/versions")
         latest = versions[0] if versions else {}
@@ -1826,10 +1835,31 @@ async def gitlab_create_mr_discussion(
     base_sha: Annotated[str | None, Field(description="Base commit SHA (from diff_refs)")] = None,
     head_sha: Annotated[str | None, Field(description="Head commit SHA (from diff_refs)")] = None,
     start_sha: Annotated[str | None, Field(description="Start commit SHA (from diff_refs)")] = None,
-    new_path: Annotated[str | None, Field(description="File path for inline comment")] = None,
-    old_path: Annotated[str | None, Field(description="Old file path (for renames)")] = None,
-    new_line: Annotated[int | None, Field(description="Line number in new file")] = None,
-    old_line: Annotated[int | None, Field(description="Line number in old file")] = None,
+    new_path: Annotated[
+        str | None,
+        Field(description="File path after the change (the new name for a renamed file)."),
+    ] = None,
+    old_path: Annotated[
+        str | None,
+        Field(
+            description="File path before the change. Filled from the MR diff when only one line "
+            "number is given; otherwise defaults to new_path, so pass it for renames."
+        ),
+    ] = None,
+    new_line: Annotated[
+        int | None,
+        Field(
+            description="Line number in the new file. Give only this for an added or unchanged "
+            "line; old_line is resolved from the MR diff."
+        ),
+    ] = None,
+    old_line: Annotated[
+        int | None,
+        Field(
+            description="Line number in the old file. Give only this for a removed line; new_line "
+            "is resolved from the MR diff. Passing both skips the diff lookup."
+        ),
+    ] = None,
     line_range_start_line: Annotated[
         int | None, Field(description="Multi-line range start")
     ] = None,
@@ -1840,11 +1870,16 @@ async def gitlab_create_mr_discussion(
 ) -> ToolResult:
     """Create a discussion on a merge request.
 
-    For inline comments, provide diff_refs and line info.
+    For an inline comment give new_path plus new_line (or old_line for a removed line); SHAs and
+    the paired line number are resolved from the MR's latest version as in gitlab_create_draft_note.
     """
+    client = _get_client(ctx)
+    enc = _enc(project_id)
     params: dict[str, Any] = {"body": body}
-
-    position = _text_position(
+    position = await _inline_position(
+        client,
+        enc,
+        mr_iid,
         base_sha=base_sha,
         head_sha=head_sha,
         start_sha=start_sha,
@@ -1859,11 +1894,7 @@ async def gitlab_create_mr_discussion(
     if position is not None:
         params["position"] = position
 
-    return _ok(
-        await _get_client(ctx).post(
-            f"/projects/{_enc(project_id)}/merge_requests/{mr_iid}/discussions", params
-        )
-    )
+    return _ok(await client.post(f"/projects/{enc}/merge_requests/{mr_iid}/discussions", params))
 
 
 @mcp.tool(

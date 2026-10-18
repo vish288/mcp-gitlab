@@ -123,7 +123,7 @@ unconditional on auth mode (oauth also hides by tag); the per-user `read_api` sc
 | Repository Files | 4 | get file (at ref, line range; refuses binary), list tree, search code (blobs), blame |
 | Merge Requests | 15 | list, get, create, update, merge, merge sequence, rebase, changes/diffs, approve, unapprove, get approvals, list pipelines, list commits, subscribe, unsubscribe |
 | MR Notes | 6 | list, add, update, delete notes; award/remove emoji |
-| MR Discussions | 4 | list, create, reply, resolve |
+| MR Discussions | 4 | list, create (inline anchor resolved from the MR diff), reply, resolve |
 | Draft Notes | 4 | create (inline; SHAs + paired old_line/new_line resolved from the MR diff), list, publish all, delete |
 | Pipelines | 5 | list, get, create, retry, cancel |
 | Jobs | 4 | retry, play, cancel, get job log |

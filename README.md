@@ -383,7 +383,7 @@ A successful result carries the response as a JSON object in both the pretty tex
 | Tool | Description |
 |------|-------------|
 | `gitlab_list_mr_discussions` | List discussions |
-| `gitlab_create_mr_discussion` | Create discussion (inline + multi-line) |
+| `gitlab_create_mr_discussion` | Create discussion (inline + multi-line; old_line/new_line pair resolved from the MR diff) |
 | `gitlab_reply_to_discussion` | Reply to discussion |
 | `gitlab_resolve_discussion` | Resolve/unresolve discussion |
 
@@ -503,6 +503,7 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 "Review MR !42 — list changes and add inline comments"
 → gitlab_mr_changes(project_id="123", mr_iid=42)
 → gitlab_create_mr_discussion(project_id="123", mr_iid=42, body="nit: ...", new_path="src/auth.py", new_line=15)
+  # old_line is filled from the diff when line 15 is unchanged
 
 "Merge MR !42 after resolving all threads"
 → gitlab_list_mr_discussions(project_id="123", mr_iid=42) → resolve unresolved

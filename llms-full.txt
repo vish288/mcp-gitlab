@@ -218,7 +218,7 @@ GITLAB_TOKEN=glpat-xxx uvx mcp-gitlab --gitlab-url https://gitlab.example.com --
 | Tool | Description |
 |------|-------------|
 | `gitlab_list_mr_discussions` | List discussions on a merge request |
-| `gitlab_create_mr_discussion` | Create a discussion on a merge request (supports inline and multi-line comments) |
+| `gitlab_create_mr_discussion` | Create a discussion on a merge request (inline + multi-line; old_line/new_line pair resolved from the MR diff) |
 | `gitlab_reply_to_discussion` | Reply to an existing discussion |
 | `gitlab_resolve_discussion` | Resolve or unresolve a discussion |
 
