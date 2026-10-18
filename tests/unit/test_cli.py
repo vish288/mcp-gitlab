@@ -28,6 +28,7 @@ _CLEAR_TOKENS = {
 def _no_token_env(tmp_path, **extra):
     env = dict.fromkeys(_CLEAR_TOKENS, "")
     env["XDG_CONFIG_HOME"] = str(tmp_path)
+    env["APPDATA"] = str(tmp_path)
     env.update(extra)
     return env
 

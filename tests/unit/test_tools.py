@@ -1545,6 +1545,7 @@ class TestLifespanPrecedence:
         for var in ("GITLAB_PAT", "GITLAB_PERSONAL_ACCESS_TOKEN", "GITLAB_API_TOKEN"):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("APPDATA", str(tmp_path))
         monkeypatch.setenv("GITLAB_URL", _TEST_URL)
         monkeypatch.setenv("GITLAB_TOKEN", "pat-xyz")
         monkeypatch.delenv("GITLAB_AUTH", raising=False)
@@ -1575,6 +1576,7 @@ class TestLifespanPrecedence:
         ):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("APPDATA", str(tmp_path))
         monkeypatch.setenv("GITLAB_URL", _TEST_URL)
         monkeypatch.delenv("GITLAB_AUTH", raising=False)
         CredentialStore().save(
@@ -1605,6 +1607,7 @@ class TestLifespanPrecedence:
         ):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("APPDATA", str(tmp_path))
         monkeypatch.setenv("GITLAB_URL", _TEST_URL)
         monkeypatch.delenv("GITLAB_AUTH", raising=False)
         with pytest.raises(ValueError, match="mcp-gitlab auth login"):
