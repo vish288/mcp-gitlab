@@ -7,6 +7,7 @@ import base64
 import functools
 import json
 import logging
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from importlib.metadata import version
@@ -313,6 +314,101 @@ def _params(**kw: Any) -> dict[str, Any]:
     return {k: v for k, v in kw.items() if v is not None}
 
 
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+_MAX_DIFF_PAGES = 10
+# ponytail: 10 x 100 files covers GitLab's own diff-files limit; raise if a real MR exceeds it
+
+
+def _parse_diff(
+    diff_text: str,
+) -> tuple[list[tuple[int | None, int | None]], list[str], list[str]]:
+    """Walk a unified-diff hunk body, pairing every line to (old_line, new_line).
+
+    Returns (pairs, new_ranges, old_ranges). ``pairs`` is one tuple per body line
+    (``None`` on the side that line is absent from); the ranges are the commentable
+    ``start-end`` spans per hunk, for the "outside the diff" error. Splits on ``"\\n"``
+    only and classifies on the first character, so a form feed or NEL inside content
+    and a trailing ``\\r`` (CRLF) never shift a line number the way ``str.splitlines()``
+    would. ``pairs == []`` means no hunk parsed (empty, binary, too-large or collapsed).
+    """
+    pairs: list[tuple[int | None, int | None]] = []
+    new_ranges: list[str] = []
+    old_ranges: list[str] = []
+    old = new = 0
+    in_hunk = False
+    for line in diff_text.removesuffix("\n").split("\n"):
+        m = _HUNK_RE.match(line)
+        if m:
+            old, new = int(m.group(1)), int(m.group(3))
+            old_count = int(m.group(2)) if m.group(2) is not None else 1
+            new_count = int(m.group(4)) if m.group(4) is not None else 1
+            if old_count > 0:
+                old_ranges.append(f"{old}-{old + old_count - 1}")
+            if new_count > 0:
+                new_ranges.append(f"{new}-{new + new_count - 1}")
+            in_hunk = True
+            continue
+        if not in_hunk:
+            continue  # diff --git / index / --- / +++ / Binary files … differ
+        marker = line[:1]
+        if marker == "+":
+            pairs.append((None, new))
+            new += 1
+        elif marker == "-":
+            pairs.append((old, None))
+            old += 1
+        elif marker == "\\":
+            continue  # \ No newline at end of file
+        else:
+            pairs.append((old, new))
+            old += 1
+            new += 1
+    return pairs, new_ranges, old_ranges
+
+
+def _fill_anchor(
+    diff_text: str, path: str, new_line: int | None, old_line: int | None
+) -> tuple[int | None, int | None]:
+    """Resolve the one missing side of an inline anchor from the file's diff.
+
+    Both sides given or both None: returned unchanged (explicit values are never
+    overridden). Otherwise the one supplied line is looked up in the diff and its
+    paired line filled in: an added/removed line anchors on one side only, a context
+    line on both. Raises ``GitLabError`` with the commentable ranges when the line is
+    outside the diff, or when the diff carries no hunk (binary/too large/collapsed).
+    """
+    if (new_line is None) == (old_line is None):
+        return new_line, old_line
+    pairs, new_ranges, old_ranges = _parse_diff(diff_text)
+    if not pairs:
+        msg = (
+            f"GitLab returned no line diff for {path!r} (binary, too large or collapsed); "
+            f"pass both old_line and new_line explicitly"
+        )
+        raise GitLabError(msg)
+    if new_line is not None:
+        for old, new in pairs:
+            if new == new_line:
+                return (new_line, None) if old is None else (new_line, old)
+        ranges = ", ".join(new_ranges) or "none"
+        msg = (
+            f"new_line {new_line} of {path!r} is not in the MR diff; inline comments must sit on "
+            f"a changed line or its surrounding context. Diff covers new-file lines {ranges}. "
+            f"Pass both old_line and new_line to anchor outside the diff."
+        )
+        raise GitLabError(msg)
+    for old, new in pairs:
+        if old == old_line:
+            return (None, old_line) if new is None else (new, old_line)
+    ranges = ", ".join(old_ranges) or "none"
+    msg = (
+        f"old_line {old_line} of {path!r} is not in the MR diff; inline comments must sit on "
+        f"a changed line or its surrounding context. Diff covers old-file lines {ranges}. "
+        f"Pass both old_line and new_line to anchor outside the diff."
+    )
+    raise GitLabError(msg)
+
+
 def _text_position(
     *,
     base_sha: str | None,
@@ -354,6 +450,82 @@ def _text_position(
             "end": {"type": range_type, line_key: line_range_end_line},
         }
     return position
+
+
+async def _inline_position(
+    client: GitLabClient,
+    enc: str,
+    mr_iid: int,
+    *,
+    base_sha: str | None,
+    head_sha: str | None,
+    start_sha: str | None,
+    new_path: str | None,
+    old_path: str | None,
+    new_line: int | None,
+    old_line: int | None,
+    line_range_start_line: int | None,
+    line_range_end_line: int | None,
+    line_range_type: str | None,
+) -> dict[str, Any] | None:
+    """Resolve the ``position`` hash for an inline MR comment from the MR's diff.
+
+    Shared by ``gitlab_create_draft_note`` and ``gitlab_create_mr_discussion``. Returns
+    None for a body-only comment (no ``new_path`` or no line). Otherwise SHAs are filled
+    from the latest version first and fail closed if still missing; then, when exactly one
+    line number is given, the file's diff is fetched to fill the paired line and ``old_path``.
+    Every unresolvable anchor raises ``GitLabError`` before any POST.
+    """
+    if not new_path or (new_line is None and old_line is None):
+        return None
+    if not (base_sha and head_sha and start_sha):
+        versions = await client.get(f"/projects/{enc}/merge_requests/{mr_iid}/versions")
+        latest = versions[0] if versions else {}
+        base_sha = base_sha or latest.get("base_commit_sha")
+        head_sha = head_sha or latest.get("head_commit_sha")
+        start_sha = start_sha or latest.get("start_commit_sha")
+        if not (base_sha and head_sha and start_sha):
+            msg = (
+                f"could not resolve diff SHAs for MR !{mr_iid}; "
+                f"pass base_sha, start_sha and head_sha"
+            )
+            raise GitLabError(msg)
+    if (new_line is None) != (old_line is None):
+        entry: dict[str, Any] | None = None
+        for page in range(1, _MAX_DIFF_PAGES + 1):
+            items, next_page = await client.get_paged(
+                f"/projects/{enc}/merge_requests/{mr_iid}/diffs",
+                {"per_page": 100, "page": page},
+            )
+            entry = next((i for i in items if i.get("new_path") == new_path), None)
+            if entry is not None:
+                break
+            if next_page is None:
+                msg = (
+                    f"{new_path!r} is not changed in MR !{mr_iid}; check the path against "
+                    f"gitlab_mr_changes (use the new_path shown there)"
+                )
+                raise GitLabError(msg)
+        else:
+            msg = (
+                f"MR !{mr_iid} has more than {_MAX_DIFF_PAGES * 100} changed files; "
+                f"pass both old_line and new_line explicitly"
+            )
+            raise GitLabError(msg)
+        new_line, old_line = _fill_anchor(entry.get("diff") or "", new_path, new_line, old_line)
+        old_path = old_path or entry.get("old_path")
+    return _text_position(
+        base_sha=base_sha,
+        head_sha=head_sha,
+        start_sha=start_sha,
+        new_path=new_path,
+        old_path=old_path,
+        new_line=new_line,
+        old_line=old_line,
+        line_range_start_line=line_range_start_line,
+        line_range_end_line=line_range_end_line,
+        line_range_type=line_range_type,
+    )
 
 
 def _variable_params(
@@ -1976,10 +2148,31 @@ async def gitlab_create_draft_note(
     base_sha: Annotated[str | None, Field(description="Base commit SHA (from diff_refs)")] = None,
     head_sha: Annotated[str | None, Field(description="Head commit SHA (from diff_refs)")] = None,
     start_sha: Annotated[str | None, Field(description="Start commit SHA (from diff_refs)")] = None,
-    new_path: Annotated[str | None, Field(description="File path for inline comment")] = None,
-    old_path: Annotated[str | None, Field(description="Old file path (for renames)")] = None,
-    new_line: Annotated[int | None, Field(description="Line number in new file")] = None,
-    old_line: Annotated[int | None, Field(description="Line number in old file")] = None,
+    new_path: Annotated[
+        str | None,
+        Field(description="File path after the change (the new name for a renamed file)."),
+    ] = None,
+    old_path: Annotated[
+        str | None,
+        Field(
+            description="File path before the change. Filled from the MR diff when only one line "
+            "number is given; otherwise defaults to new_path, so pass it for renames."
+        ),
+    ] = None,
+    new_line: Annotated[
+        int | None,
+        Field(
+            description="Line number in the new file. Give only this for an added or unchanged "
+            "line; old_line is resolved from the MR diff."
+        ),
+    ] = None,
+    old_line: Annotated[
+        int | None,
+        Field(
+            description="Line number in the old file. Give only this for a removed line; new_line "
+            "is resolved from the MR diff. Passing both skips the diff lookup."
+        ),
+    ] = None,
     line_range_start_line: Annotated[
         int | None, Field(description="Multi-line range start")
     ] = None,
@@ -1990,27 +2183,17 @@ async def gitlab_create_draft_note(
 ) -> ToolResult:
     """Create an unpublished draft note on a merge request ("Submit review" style).
 
-    Returns the new draft note. For an inline comment give new_path plus new_line/old_line; the
-    diff SHAs are auto-filled from the MR's latest version if you omit them.
+    Returns the new draft note. For an inline comment give new_path plus new_line (or old_line for
+    a removed line); the diff SHAs come from the MR's latest version and the paired line number
+    from its diff, and a line outside the diff is refused with the commentable ranges.
     """
     client = _get_client(ctx)
     enc = _enc(project_id)
-    # Auto-fill the diff SHAs so callers can anchor by path+line without first
-    # fetching diff_refs themselves.
-    if (
-        new_path
-        and (new_line is not None or old_line is not None)
-        and not (base_sha and head_sha and start_sha)
-    ):
-        versions = await client.get(f"/projects/{enc}/merge_requests/{mr_iid}/versions")
-        if versions:
-            latest = versions[0]
-            base_sha = base_sha or latest.get("base_commit_sha")
-            head_sha = head_sha or latest.get("head_commit_sha")
-            start_sha = start_sha or latest.get("start_commit_sha")
-
     params: dict[str, Any] = {"note": body}
-    position = _text_position(
+    position = await _inline_position(
+        client,
+        enc,
+        mr_iid,
         base_sha=base_sha,
         head_sha=head_sha,
         start_sha=start_sha,

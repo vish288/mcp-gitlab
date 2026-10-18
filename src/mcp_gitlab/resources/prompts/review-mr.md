@@ -11,7 +11,7 @@
    - Security implications (injection, auth, secrets)
    - Performance (N+1 queries, unnecessary allocations)
    - Naming clarity and code style consistency
-5. **Draft inline comments** — use `gitlab_create_draft_note` for each finding, anchored to the relevant file and line (pass `new_path` plus `new_line`/`old_line`; the diff SHAs are auto-filled). Drafts stay invisible to the author until you publish, so you can revise them freely. Use Conventional Comments labels (suggestion, issue, nitpick, praise).
+5. **Draft inline comments** — use `gitlab_create_draft_note` for each finding, anchored to the relevant file and line (pass `new_path` plus `new_line`, or `old_line` for a removed line; the diff SHAs and the paired line number auto-fill from the MR's latest version, and a line outside the diff is refused with the commentable ranges). Drafts stay invisible to the author until you publish, so you can revise them freely. Use Conventional Comments labels (suggestion, issue, nitpick, praise).
 6. **Summarize** — add a draft note (no position) via `gitlab_create_draft_note` covering:
    - What the MR does well
    - Blocking issues (if any)

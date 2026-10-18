@@ -390,7 +390,7 @@ A successful result carries the response as a JSON object in both the pretty tex
 ### Draft Notes
 | Tool | Description |
 |------|-------------|
-| `gitlab_create_draft_note` | Create an unpublished draft note (inline SHAs auto-filled from the MR's latest version) |
+| `gitlab_create_draft_note` | Create an unpublished draft note (SHAs from the MR's latest version, paired line number from its diff) |
 | `gitlab_list_draft_notes` | List the current user's unpublished draft notes |
 | `gitlab_publish_draft_notes` | Publish ALL pending draft notes at once ("Submit review") |
 | `gitlab_delete_draft_note` | Delete a single unpublished draft note |

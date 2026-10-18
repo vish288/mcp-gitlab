@@ -10,6 +10,9 @@ import pytest
 from fastmcp.exceptions import ToolError
 from httpx import Response
 
+from mcp_gitlab.exceptions import GitLabError
+from mcp_gitlab.servers.gitlab import _fill_anchor, _parse_diff
+
 
 def _parse(result: Any) -> dict | list:
     """Extract JSON from a tool call result. FastMCP's ``Client.call_tool`` always
@@ -1358,6 +1361,109 @@ class TestGetBlame:
 # ═══════════════════════════════════════════════════════
 
 
+# ═══════════════════════════════════════════════════════
+# Inline-note anchor resolution (_parse_diff / _fill_anchor)
+# ═══════════════════════════════════════════════════════
+
+# Hunk-body fixtures in the shape GET .../diffs returns (the "diff" field).
+F_MOD = "@@ -10,6 +10,8 @@ def f():\n ctx10\n-old11\n+new11\n+new12\n ctx13\n ctx14\n ctx15\n+new16\n ctx17\n"  # noqa: E501
+F_TWO = F_MOD + "@@ -40,3 +42,3 @@\n ctx42\n-old41\n+new43\n ctx44\n"
+F_BLANK = "@@ -1,3 +1,3 @@\n a\n\n-c\n+c\n\\ No newline at end of file\n"
+F_FF = "@@ -1,3 +1,3 @@\n a\x0cb\n-c\n+d\n e\n"
+F_CRLF = "@@ -1,2 +1,2 @@\r\n a\r\n-b\r\n+c\r\n"
+F_NOCNT = "@@ -5 +5 @@\n-x\n+y\n"
+F_HDR = "diff --git a/f.py b/f.py\nindex 1..2 100644\n--- a/f.py\n+++ b/f.py\n" + F_MOD
+F_DELH = "@@ -5,2 +4,0 @@\n-gone5\n-gone6\n@@ -20,3 +18,3 @@\n a\n-b\n+c\n d\n"
+F_NEW = "@@ -0,0 +1,3 @@\n+a\n+b\n+c\n"
+F_DEL = "@@ -1,3 +0,0 @@\n-a\n-b\n-c\n"
+F_BIN = "Binary files a/x.png and b/x.png differ\n"
+
+
+class TestFillAnchor:
+    """Pure resolution of the missing line number from a unified-diff hunk body."""
+
+    def test_added_line(self):  # 1
+        assert _fill_anchor(F_MOD, "f.py", 11, None) == (11, None)
+
+    def test_context_from_new(self):  # 2
+        assert _fill_anchor(F_MOD, "f.py", 13, None) == (13, 12)
+
+    def test_removed_line(self):  # 3
+        assert _fill_anchor(F_MOD, "f.py", None, 11) == (None, 11)
+
+    def test_context_from_old(self):  # 4
+        assert _fill_anchor(F_MOD, "f.py", None, 12) == (13, 12)
+
+    def test_drift_across_hunks(self):  # 5
+        assert _fill_anchor(F_TWO, "f.py", 44, None) == (44, 42)
+
+    def test_new_line_outside_diff(self):  # 6
+        with pytest.raises(GitLabError) as exc:
+            _fill_anchor(F_MOD, "f.py", 5, None)
+        assert "10-17" in str(exc.value)
+        assert "not in the MR diff" in str(exc.value)
+
+    def test_old_line_outside_diff(self):  # 7
+        with pytest.raises(GitLabError) as exc:
+            _fill_anchor(F_MOD, "f.py", None, 99)
+        assert "10-15" in str(exc.value)
+
+    def test_blank_context_line(self):  # 8
+        assert _fill_anchor(F_BLANK, "f.py", 2, None) == (2, 2)
+        assert _fill_anchor(F_BLANK, "f.py", 3, None) == (3, None)
+
+    def test_new_file(self):  # 9
+        assert _fill_anchor(F_NEW, "f.py", 2, None) == (2, None)
+        with pytest.raises(GitLabError) as exc:
+            _fill_anchor(F_NEW, "f.py", None, 1)
+        assert "old-file lines none" in str(exc.value)
+
+    def test_deleted_file(self):  # 10
+        assert _fill_anchor(F_DEL, "f.py", None, 2) == (None, 2)
+        with pytest.raises(GitLabError) as exc:
+            _fill_anchor(F_DEL, "f.py", 1, None)
+        assert "new-file lines none" in str(exc.value)
+
+    def test_both_given_untouched(self):  # 11
+        assert _fill_anchor(F_MOD, "f.py", 13, 99) == (13, 99)
+
+    def test_both_none(self):  # 12
+        assert _fill_anchor(F_MOD, "f.py", None, None) == (None, None)
+
+    def test_form_feed_does_not_split(self):  # 13
+        # splitlines() would split on \x0c and return (3, None); "\n"-only keeps it context.
+        assert _fill_anchor(F_FF, "f.py", 3, None) == (3, 3)
+
+    def test_crlf_payload(self):  # 14
+        assert _fill_anchor(F_CRLF, "f.py", 1, None) == (1, 1)
+        assert _fill_anchor(F_CRLF, "f.py", 2, None) == (2, None)
+
+    def test_header_without_counts(self):  # 15
+        assert _fill_anchor(F_NOCNT, "f.py", 5, None) == (5, None)
+        assert _fill_anchor(F_NOCNT, "f.py", None, 5) == (None, 5)
+        _pairs, new_ranges, old_ranges = _parse_diff(F_NOCNT)
+        assert (new_ranges, old_ranges) == (["5-5"], ["5-5"])
+
+    def test_header_lines_skipped(self):  # 16
+        assert _fill_anchor(F_HDR, "f.py", 13, None) == (13, 12)
+
+    def test_pure_deletion_hunk_ranges(self):  # 17
+        _pairs, new_ranges, old_ranges = _parse_diff(F_DELH)
+        assert new_ranges == ["18-20"]
+        assert old_ranges == ["5-6", "20-22"]
+        with pytest.raises(GitLabError) as exc:
+            _fill_anchor(F_DELH, "f.py", 4, None)
+        assert "18-20" in str(exc.value)
+        assert "5-6" not in str(exc.value)
+
+    def test_binary_and_empty_no_line_diff(self):  # 18
+        with pytest.raises(GitLabError) as exc:
+            _fill_anchor(F_BIN, "x.png", 1, None)
+        assert "no line diff" in str(exc.value)
+        with pytest.raises(GitLabError):
+            _fill_anchor("", "x.png", 1, None)
+
+
 class TestDraftNotes:
     async def test_create_body_only(self, tool_client):
         client, router = tool_client
@@ -1372,9 +1478,9 @@ class TestDraftNotes:
         assert parsed["id"] == 7
         assert json.loads(route.calls.last.request.content) == {"note": "looks good"}
 
-    async def test_create_inline_autofills_shas_from_versions(self, tool_client):
-        client, router = tool_client
-        router.get("/projects/123/merge_requests/1/versions").mock(
+    @staticmethod
+    def _versions_route(router):
+        return router.get("/projects/123/merge_requests/1/versions").mock(
             return_value=Response(
                 200,
                 json=[
@@ -1386,21 +1492,373 @@ class TestDraftNotes:
                 ],
             )
         )
+
+    async def test_create_inline_resolves_context_line(self, tool_client):  # T1
+        # Folds the old SHA-autofill test: versions fill the SHAs, /diffs fills old_line.
+        client, router = tool_client
+        versions = self._versions_route(router)
+        diffs = router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
         route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 13},
+        )
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos == {
+            "base_sha": "base1",
+            "start_sha": "start1",
+            "head_sha": "head1",
+            "position_type": "text",
+            "new_path": "app.py",
+            "old_path": "app.py",
+            "new_line": 13,
+            "old_line": 12,
+        }
+        assert versions.call_count == 1
+        assert diffs.call_count == 1
+
+    async def test_create_inline_added_line_no_old_line(self, tool_client):  # T2
+        client, router = tool_client
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 11},
+        )
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos["new_line"] == 11
+        assert "old_line" not in pos
+
+    async def test_create_inline_explicit_lines_skip_lookup(self, tool_client):  # T3
+        client, router = tool_client
+        router._assert_all_called = False
+        versions = self._versions_route(router)
+        diffs = router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(200, json=[])
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {
+                "project_id": "123",
+                "mr_iid": 1,
+                "body": "nit",
+                "new_path": "app.py",
+                "new_line": 13,
+                "old_line": 12,
+                "base_sha": "aaa",
+                "head_sha": "bbb",
+                "start_sha": "ccc",
+            },
+        )
+        assert versions.called is False
+        assert diffs.called is False
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos["new_line"] == 13
+        assert pos["old_line"] == 12
+        assert pos["base_sha"] == "aaa"
+
+    async def test_create_inline_outside_diff_refused(self, tool_client):  # T4
+        client, router = tool_client
+        router._assert_all_called = False
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
             return_value=Response(201, json={"id": 8})
         )
         result = await client.call_tool(
             "gitlab_create_draft_note",
-            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 42},
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 5},
+            raise_on_error=False,
         )
-        parsed = _parse(result)
-        assert parsed["id"] == 8
+        body = _err_body(result)
+        assert "10-17" in body["error"]
+        assert post.called is False
+
+    @pytest.mark.parametrize("diff_val", [F_BIN, ""])
+    async def test_create_inline_binary_and_empty_refused(self, tool_client, diff_val):  # T5
+        client, router = tool_client
+        router._assert_all_called = False
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": diff_val}]
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 1},
+            raise_on_error=False,
+        )
+        body = _err_body(result)
+        assert "pass both old_line and new_line" in body["error"]
+        assert post.called is False
+
+    async def test_create_inline_not_changed_refused(self, tool_client):  # T6
+        client, router = tool_client
+        router._assert_all_called = False
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "other.py", "new_path": "other.py", "diff": F_MOD}]
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 13},
+            raise_on_error=False,
+        )
+        body = _err_body(result)
+        assert "not changed in MR !1" in body["error"]
+        assert "gitlab_mr_changes" in body["error"]
+        assert post.called is False
+
+    async def test_create_inline_pages_through_diffs(self, tool_client):  # T7
+        client, router = tool_client
+        self._versions_route(router)
+        page1 = router.get("/projects/123/merge_requests/1/diffs", params={"page": "1"}).mock(
+            return_value=Response(
+                200,
+                json=[{"old_path": "other.py", "new_path": "other.py", "diff": F_MOD}],
+                headers={"x-next-page": "2"},
+            )
+        )
+        page2 = router.get("/projects/123/merge_requests/1/diffs", params={"page": "2"}).mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 13},
+        )
+        assert page1.call_count == 1
+        assert page2.call_count == 1
+        assert dict(page1.calls.last.request.url.params)["per_page"] == "100"
         pos = json.loads(route.calls.last.request.content)["position"]
-        assert pos["base_sha"] == "base1"
-        assert pos["head_sha"] == "head1"
-        assert pos["start_sha"] == "start1"
-        assert pos["new_path"] == "app.py"
-        assert pos["new_line"] == 42
+        assert pos["new_line"] == 13
+        assert pos["old_line"] == 12
+
+    async def test_create_inline_page_cap(self, tool_client):  # T8
+        client, router = tool_client
+        router._assert_all_called = False
+        self._versions_route(router)
+        diffs = router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200,
+                json=[{"old_path": "other.py", "new_path": "other.py", "diff": F_MOD}],
+                headers={"x-next-page": "99"},
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 13},
+            raise_on_error=False,
+        )
+        body = _err_body(result)
+        assert diffs.call_count == 10
+        assert "more than 1000 changed files" in body["error"]
+        assert "not changed" not in body["error"]
+        assert post.called is False
+
+    async def test_create_inline_rename_fills_old_path(self, tool_client):  # T9
+        client, router = tool_client
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "old_path": "a.py",
+                        "new_path": "b.py",
+                        "renamed_file": True,
+                        "diff": F_MOD,
+                    }
+                ],
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "b.py", "new_line": 13},
+        )
+        assert json.loads(route.calls.last.request.content)["position"]["old_path"] == "a.py"
+
+    async def test_create_inline_rename_explicit_old_path_kept(self, tool_client):  # T9 variant
+        client, router = tool_client
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "a.py", "new_path": "b.py", "diff": F_MOD}]
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {
+                "project_id": "123",
+                "mr_iid": 1,
+                "body": "nit",
+                "new_path": "b.py",
+                "old_path": "z.py",
+                "new_line": 13,
+            },
+        )
+        assert json.loads(route.calls.last.request.content)["position"]["old_path"] == "z.py"
+
+    async def test_create_inline_prerename_name_refused(self, tool_client):  # T9 variant
+        client, router = tool_client
+        router._assert_all_called = False
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "a.py", "new_path": "b.py", "diff": F_MOD}]
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "a.py", "new_line": 13},
+            raise_on_error=False,
+        )
+        assert "not changed in MR" in _err_body(result)["error"]
+        assert post.called is False
+
+    async def test_create_inline_deleted_file(self, tool_client):  # T10
+        client, router = tool_client
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "old_path": "gone.py",
+                        "new_path": "gone.py",
+                        "deleted_file": True,
+                        "diff": F_DEL,
+                    }
+                ],
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "gone.py", "old_line": 2},
+        )
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos["old_line"] == 2
+        assert "new_line" not in pos
+
+    async def test_create_inline_deleted_file_new_line_refused(self, tool_client):  # T10 variant
+        client, router = tool_client
+        router._assert_all_called = False
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "gone.py", "new_path": "gone.py", "diff": F_DEL}]
+            )
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "gone.py", "new_line": 1},
+            raise_on_error=False,
+        )
+        assert "not in the MR diff" in _err_body(result)["error"]
+        assert post.called is False
+
+    async def test_create_inline_no_shas_resolvable_refused(self, tool_client):  # T11
+        client, router = tool_client
+        router._assert_all_called = False
+        router.get("/projects/123/merge_requests/1/versions").mock(
+            return_value=Response(200, json=[])
+        )
+        diffs = router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(200, json=[])
+        )
+        post = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        result = await client.call_tool(
+            "gitlab_create_draft_note",
+            {"project_id": "123", "mr_iid": 1, "body": "nit", "new_path": "app.py", "new_line": 13},
+            raise_on_error=False,
+        )
+        assert "could not resolve diff SHAs" in _err_body(result)["error"]
+        assert diffs.called is False
+        assert post.called is False
+
+    async def test_create_inline_line_range_preserved(self, tool_client):  # T16
+        client, router = tool_client
+        self._versions_route(router)
+        router.get("/projects/123/merge_requests/1/diffs").mock(
+            return_value=Response(
+                200, json=[{"old_path": "app.py", "new_path": "app.py", "diff": F_MOD}]
+            )
+        )
+        route = router.post("/projects/123/merge_requests/1/draft_notes").mock(
+            return_value=Response(201, json={"id": 8})
+        )
+        await client.call_tool(
+            "gitlab_create_draft_note",
+            {
+                "project_id": "123",
+                "mr_iid": 1,
+                "body": "nit",
+                "new_path": "app.py",
+                "new_line": 13,
+                "line_range_start_line": 13,
+                "line_range_end_line": 16,
+                "line_range_type": "new",
+            },
+        )
+        pos = json.loads(route.calls.last.request.content)["position"]
+        assert pos["old_line"] == 12
+        assert pos["line_range"] == {
+            "start": {"type": "new", "new_line": 13},
+            "end": {"type": "new", "new_line": 16},
+        }
 
     async def test_create_blocked_readonly(self, readonly_client):
         client, _router = readonly_client

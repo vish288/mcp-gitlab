@@ -66,6 +66,7 @@ pushed to a registry.
 - `GitLabClient._send` is the one send path for every verb. With stored local-sign-in credentials it sets a `Bearer` header from `LocalCredentials.bearer()` (proactive refresh within a 300 s margin) and, on a 401, refreshes once and retries; refresh failure raises `GitLabAuthError` rather than looping
 - Project/group IDs can be numeric or URL-encoded paths
 - `gitlab_list_variables` / `gitlab_list_group_variables` return `***MASKED***` for variables GitLab marks as masked
+- `_inline_position` (shared by draft notes and discussions) resolves SHAs from `/versions` and the missing `old_line`/`new_line` from `/diffs`; explicit values are never overridden; failures are refused before the POST
 
 ## MCP Compliance Rules
 
@@ -123,7 +124,7 @@ unconditional on auth mode (oauth also hides by tag); the per-user `read_api` sc
 | Merge Requests | 15 | list, get, create, update, merge, merge sequence, rebase, changes/diffs, approve, unapprove, get approvals, list pipelines, list commits, subscribe, unsubscribe |
 | MR Notes | 6 | list, add, update, delete notes; award/remove emoji |
 | MR Discussions | 4 | list, create, reply, resolve |
-| Draft Notes | 4 | create (inline, SHAs auto-filled from the MR version), list, publish all, delete |
+| Draft Notes | 4 | create (inline; SHAs + paired old_line/new_line resolved from the MR diff), list, publish all, delete |
 | Pipelines | 5 | list, get, create, retry, cancel |
 | Jobs | 4 | retry, play, cancel, get job log |
 | Tags | 4 | list, get, create, delete |
@@ -137,7 +138,7 @@ get job IDs from `gitlab_get_pipeline(..., include_jobs=True)`.
 ## Common Workflows
 
 - **Code review**: `gitlab_list_mrs` → `gitlab_mr_changes` → `gitlab_list_mr_discussions` → `gitlab_add_mr_note` or `gitlab_create_mr_discussion` → `gitlab_resolve_discussion`
-- **Review with drafts**: `gitlab_mr_changes` → `gitlab_get_file` (read full context at the MR head) → `gitlab_create_draft_note` per finding → `gitlab_publish_draft_notes` once at the end ("Submit review")
+- **Review with drafts**: `gitlab_mr_changes` → `gitlab_get_file` (read full context at the MR head) → `gitlab_create_draft_note` per finding (give `new_path` plus `new_line`, or `old_line` for a removed line; SHAs and the paired line resolve from the MR diff) → `gitlab_publish_draft_notes` once at the end ("Submit review")
 - **Pipeline debugging**: `gitlab_list_pipelines` → `gitlab_get_pipeline` (`include_jobs=True`) → `gitlab_get_job_log` → `gitlab_retry_job`
 - **Release**: `gitlab_list_commits` → `gitlab_compare` → `gitlab_create_tag` → `gitlab_create_release`
 - **Branch protection**: `gitlab_list_project_approval_rules` → `gitlab_create_project_approval_rule` → `gitlab_update_project_merge_settings`
@@ -240,7 +241,6 @@ the same commit:
 - `llms.txt` — count in tagline and documentation link
 - `llms-full.txt` — count in tagline, documentation link, full tool reference section
 - `AGENTS.md` — counts in intro, tool category table
-- `GEMINI.md` — count in intro, tool categories, common workflows
 - `server.json` — description field (≤100 chars)
 
 Checklist: counts match the actual registered tools/resources/prompts; the category list is
