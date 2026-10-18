@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.21.0] - 2026-10-18
+
+### Features
+- feat(review): resolve draft note anchors from the MR diff (6e01b73)
+
+### Bug Fixes
+- fix(discussions): anchor inline discussions instead of silently posting body-only (00a836f)
+
+### Documentation
+- docs: describe signed rebase + fast-forward landing in AGENTS.md (b05ebd5)
+
+### Tests
+- test: isolate APPDATA alongside XDG_CONFIG_HOME in credential tests (4731af5)
+
+
 ## [0.20.2] - 2026-10-14
 
 ### Bug Fixes
