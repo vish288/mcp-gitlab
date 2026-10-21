@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import asyncio
+import ssl
 import time
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 
 import httpx
 import pytest
 import respx
 
+import mcp_gitlab.client as client_mod
 from mcp_gitlab.client import GitLabClient
 from mcp_gitlab.config import GitLabConfig
 from mcp_gitlab.exceptions import (
     GitLabApiError,
     GitLabAuthError,
+    GitLabConnectionError,
     GitLabError,
     GitLabNotFoundError,
+    GitLabRateLimitError,
+    GitLabTimeoutError,
 )
 from mcp_gitlab.local_auth import CredentialStore
 
@@ -380,3 +388,141 @@ class TestLocalCredentials:
         assert items == [{"id": 9}]
         assert get.call_count == 2
         await gl.close()
+
+
+class TestClientTransport:
+    """R2: GET-only retries, Retry-After, and the timeout-vs-unreachable split."""
+
+    @pytest.fixture
+    def _no_jitter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(client_mod._jitter, "uniform", lambda _a, _b: 0.0)
+
+    async def test_get_retries_on_503_then_succeeds(self, client, mock_api, _no_jitter) -> None:
+        route = mock_api.get("/projects/123").mock(
+            side_effect=[
+                httpx.Response(503, headers={"Retry-After": "1"}, text="unavailable"),
+                httpx.Response(200, json={"id": 123}),
+            ]
+        )
+        result = await client.get("/projects/123")
+        assert result == {"id": 123}
+        assert route.call_count == 2
+
+    async def test_get_retries_on_429_with_short_retry_after(self, client, mock_api) -> None:
+        route = mock_api.get("/projects/123").mock(
+            side_effect=[
+                httpx.Response(429, headers={"Retry-After": "0"}, text="slow down"),
+                httpx.Response(200, json={"id": 123}),
+            ]
+        )
+        result = await client.get("/projects/123")
+        assert result == {"id": 123}
+        assert route.call_count == 2
+
+    async def test_post_is_never_retried(self, client, mock_api) -> None:
+        route = mock_api.post("/projects/123/merge_requests").mock(
+            side_effect=[
+                httpx.Response(503, text="unavailable"),
+                httpx.Response(201, json={}),
+            ]
+        )
+        with pytest.raises(GitLabApiError) as exc:
+            await client.post("/projects/123/merge_requests", json_data={})
+        assert exc.value.status_code == 503
+        assert route.call_count == 1
+
+    async def test_long_retry_after_429_surfaces_retry_after(self, client, mock_api) -> None:
+        route = mock_api.get("/projects/123").mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "30"}, text="slow down")
+        )
+        with pytest.raises(GitLabRateLimitError) as exc:
+            await client.get("/projects/123")
+        assert exc.value.retry_after == 30.0
+        assert exc.value.status_code == 429
+        assert route.call_count == 1
+
+    async def test_timeout_is_distinct_from_unreachable(self, client, mock_api) -> None:
+        mock_api.get("/projects/123").mock(side_effect=httpx.ReadTimeout("slow"))
+        with pytest.raises(GitLabTimeoutError):
+            await client.get("/projects/123")
+
+    async def test_connect_error_is_unreachable(self, client, mock_api) -> None:
+        mock_api.get("/projects/123").mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(GitLabConnectionError):
+            await client.get("/projects/123")
+
+    def test_connect_phase_capped(self) -> None:
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="t", timeout=50))
+        assert gl._client.timeout.connect == 10  # min(10, 50)
+        assert gl._client.timeout.read == 50
+
+    def test_transport_carries_verify_false(self) -> None:
+        # httpx 0.28 ignores the client-level verify once a transport is given,
+        # so the transport must carry it or TLS verification silently turns on.
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="t", ssl_verify=False))
+        assert gl._client._transport._pool._ssl_context.verify_mode == ssl.CERT_NONE
+
+    def test_transport_carries_verify_true(self) -> None:
+        gl = GitLabClient(GitLabConfig(url=TEST_URL, token="t", ssl_verify=True))
+        assert gl._client._transport._pool._ssl_context.verify_mode == ssl.CERT_REQUIRED
+
+    async def test_connect_timeout_is_unreachable(self, client, mock_api) -> None:
+        # ConnectTimeout is a TimeoutException subclass but means the host was
+        # never reached, so it maps to the connection (unreachable) error.
+        mock_api.get("/projects/123").mock(side_effect=httpx.ConnectTimeout("no route"))
+        with pytest.raises(GitLabConnectionError):
+            await client.get("/projects/123")
+
+    async def test_get_gives_up_after_two_attempts(self, client, mock_api, _no_jitter) -> None:
+        route = mock_api.get("/projects/123").mock(
+            return_value=httpx.Response(503, text="unavailable")
+        )
+        with pytest.raises(GitLabApiError) as exc:
+            await client.get("/projects/123")
+        assert exc.value.status_code == 503
+        assert route.call_count == 2
+
+    async def test_cancellation_propagates_without_retry(self, client, monkeypatch) -> None:
+        # The retry loop must not swallow cancellation; it propagates on the
+        # first attempt. (respx cannot carry a BaseException side_effect.)
+        calls = 0
+
+        async def _boom(*_a, **_k):
+            nonlocal calls
+            calls += 1
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(client._client, "request", _boom)
+        with pytest.raises(asyncio.CancelledError):
+            await client.get("/projects/123")
+        assert calls == 1
+
+
+def _retry_after_resp(value: str | None) -> httpx.Response:
+    headers = {"Retry-After": value} if value is not None else {}
+    return httpx.Response(429, headers=headers)
+
+
+class TestRetryAfterParsing:
+    """_retry_after_seconds handles both forms, clamps, and rejects non-finite."""
+
+    def test_delta_seconds(self) -> None:
+        assert client_mod._retry_after_seconds(_retry_after_resp("5")) == 5.0
+
+    def test_http_date(self) -> None:
+        when = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=100))
+        secs = client_mod._retry_after_seconds(_retry_after_resp(when))
+        assert secs is not None
+        assert 80 <= secs <= 100
+
+    def test_past_date_and_negative_clamped(self) -> None:
+        past = client_mod._retry_after_seconds(_retry_after_resp("Wed, 21 Oct 2015 07:28:00 GMT"))
+        assert past == 0.0
+        assert client_mod._retry_after_seconds(_retry_after_resp("-5")) == 0.0
+
+    def test_non_finite_rejected(self) -> None:
+        assert client_mod._retry_after_seconds(_retry_after_resp("nan")) is None
+        assert client_mod._retry_after_seconds(_retry_after_resp("inf")) is None
+
+    def test_absent(self) -> None:
+        assert client_mod._retry_after_seconds(_retry_after_resp(None)) is None

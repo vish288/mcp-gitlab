@@ -24,15 +24,15 @@ are client scenarios), so a conformance job cannot prove them.
 ## Architecture
 
 - **Entry point**: `src/mcp_gitlab/__init__.py` — click CLI, loads `.env` via python-dotenv, runs the FastMCP server
-- **Client**: `src/mcp_gitlab/client.py` — async httpx client with all GitLab API methods
+- **Client**: `src/mcp_gitlab/client.py` — async httpx client with all GitLab API methods. Transport (R2): a per-phase `httpx.Timeout` with the connect phase capped at 10s and `AsyncHTTPTransport(retries=2)` for connection errors; `_send` adds GET-only status retries (502/503/504 with jitter, 429 when `Retry-After` ≤ 5s, max 2 attempts, writes never retried — kept separate from the refresh-on-401 retry) and splits a timeout (`GitLabTimeoutError`) from an unreachable host (`GitLabConnectionError`; a `ConnectTimeout` counts as unreachable); an unresolved 429 surfaces `retry_after` via `GitLabRateLimitError`. Worst-case latency against a hard-down host is roughly `2 × (3 × connect-cap + timeout) + jitter` (connect cap 10s; the two outer attempts each wrap httpx's three connect tries)
 - **Tools**: `src/mcp_gitlab/servers/gitlab.py` — all 91 FastMCP tool registrations
 - **Resources**: `src/mcp_gitlab/servers/resources.py` — 7 MCP resources (4 `resource://rules/*`, 3 `resource://guides/*`), content in `src/mcp_gitlab/resources/*.md`
 - **Prompts**: `src/mcp_gitlab/servers/prompts.py` — 6 MCP prompts (multi-tool workflows)
 - **Helpers**: `src/mcp_gitlab/servers/_helpers.py` — cached file loader with path-traversal guard, plus GitLab URL parsers. Most tools accept a project ID, a path, *or* a full GitLab URL for `project_id`; MR and pipeline URLs also yield the iid/id
-- **Config**: `src/mcp_gitlab/config.py` — `GitLabConfig` dataclass built from env vars
+- **Config**: `src/mcp_gitlab/config.py` — `GitLabConfig` dataclass built from env vars; `GITLAB_TIMEOUT` is validated with a named error, and the CLI validates config before `run_async` (exit 2, one line) for token mode too, not just oauth
 - **Local sign-in**: `src/mcp_gitlab/local_auth.py` — device and PKCE flows, credentials file, refresh under lock; used when no env token is set
 - **OAuth**: `src/mcp_gitlab/oauth.py` — `GitLabProvider` (a fastmcp `OAuthProxy` in front of GitLab) and `GitLabTokenVerifier` (validates a GitLab OAuth token via `GET /oauth/token/info`). Only used when `--auth oauth`
-- **Exceptions**: `src/mcp_gitlab/exceptions.py` — `GitLabError` base; `GitLabApiError`, `GitLabAuthError`, `GitLabNotFoundError`, `GitLabWriteDisabledError`
+- **Exceptions**: `src/mcp_gitlab/exceptions.py` — `GitLabError` base; `GitLabApiError`, `GitLabAuthError`, `GitLabNotFoundError`, `GitLabRateLimitError` (with `retry_after`), `GitLabTimeoutError`, `GitLabConnectionError`, `GitLabWriteDisabledError`
 - **Tests**: `tests/` — `unit/test_tools.py` (143 tool-level tests via the FastMCP in-memory client), plus `test_client.py`, `test_config.py`, `test_local_auth.py`, `test_exceptions.py`, `test_prompts.py`, `test_resources.py`, and `tests/test_links.py`. Shared fixtures (`config`, `client`, `mock_api` via respx) live in `tests/conftest.py`
 
 ## Development

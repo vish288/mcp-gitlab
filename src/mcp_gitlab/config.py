@@ -93,7 +93,17 @@ class GitLabConfig:
             or os.getenv("GITLAB_API_TOKEN", "")
         )
         read_only = _read_only("GITLAB_READ_ONLY")
-        timeout = int(os.getenv("GITLAB_TIMEOUT", "30"))
+        raw_timeout = os.getenv("GITLAB_TIMEOUT", "30")
+        try:
+            timeout = int(raw_timeout)
+        except ValueError:
+            msg = f"GITLAB_TIMEOUT must be an integer number of seconds, got {raw_timeout!r}"
+            raise ValueError(msg) from None
+        if timeout <= 0:
+            msg = (
+                f"GITLAB_TIMEOUT must be a positive integer number of seconds, got {raw_timeout!r}"
+            )
+            raise ValueError(msg)
         ssl_verify = os.getenv("GITLAB_SSL_VERIFY", "true").lower() not in (
             "false",
             "0",

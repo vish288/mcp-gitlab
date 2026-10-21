@@ -32,6 +32,40 @@ class GitLabNotFoundError(GitLabApiError):
         super().__init__(404, "Not Found", body)
 
 
+class GitLabRateLimitError(GitLabApiError):
+    """Raised on 429 when the request was not resolved by the bounded retry.
+
+    ``retry_after`` is the parsed ``Retry-After`` delta-seconds (None when the
+    header was absent or an HTTP-date); it is surfaced in the error envelope so
+    the caller knows how long to wait before retrying.
+    """
+
+    def __init__(
+        self,
+        status_code: int,
+        status_text: str,
+        body: str = "",
+        *,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(status_code, status_text, body)
+        self.retry_after = retry_after
+
+
+class GitLabTimeoutError(GitLabError):
+    """A request to the GitLab API exceeded its deadline (connect/read/write).
+
+    Split out from ``GitLabConnectionError`` (the split is ported from
+    mcp-argocd) so "the server is slow" is distinguishable from "the server is
+    unreachable": a timeout is often transient and worth retrying, a connect
+    failure usually means a wrong URL or a down host.
+    """
+
+
+class GitLabConnectionError(GitLabError):
+    """Raised when the GitLab instance cannot be reached (DNS, refused, TLS)."""
+
+
 class GitLabWriteDisabledError(GitLabError):
     """Raised when a write operation cannot proceed.
 

@@ -935,6 +935,8 @@ async def test_network_error_is_expected(tool_client, caplog):
 
     assert result.is_error is True
     body = json.loads(result.content[0].text)
-    assert "cannot reach" in body["hint"]
+    # The client now maps a transport error to GitLabConnectionError (the
+    # timeout-vs-unreachable split), so the envelope carries the connection hint.
+    assert "reach gitlab" in body["hint"].lower()
     assert result.structured_content is None
     assert not [r for r in caplog.records if r.name == "mcp_gitlab.servers.gitlab"]

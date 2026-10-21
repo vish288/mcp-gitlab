@@ -2,17 +2,81 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import http.cookiejar
 import json
+import math
+import random
 import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import quote, unquote
 
 import httpx
 
 from .config import GitLabConfig
-from .exceptions import GitLabApiError, GitLabAuthError, GitLabError, GitLabNotFoundError
+from .exceptions import (
+    GitLabApiError,
+    GitLabAuthError,
+    GitLabConnectionError,
+    GitLabError,
+    GitLabNotFoundError,
+    GitLabRateLimitError,
+    GitLabTimeoutError,
+)
+
+# Transport retry policy (R2). Idempotent GETs are retried on a transient
+# upstream status; writes are never retried. httpx's AsyncHTTPTransport(retries=)
+# already covers connection-level failures, so this layer only adds status
+# retries. "Max 2 attempts" = the initial request plus at most one retry.
+_RETRY_STATUSES = frozenset({502, 503, 504})
+_MAX_ATTEMPTS = 2
+_MAX_RETRY_AFTER = 5.0  # only honour a 429 Retry-After at most this long (seconds)
+_jitter = random.SystemRandom()  # jitter source; SystemRandom sidesteps the S311 lint
+
+
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    """Parse a ``Retry-After`` header to seconds-from-now, or None when absent.
+
+    Both forms are handled: delta-seconds, and an HTTP-date (RFC 7231), which is
+    converted to the delay from now. The result is clamped to >= 0 (a past date
+    means "retry now") and non-finite values are rejected."""
+    raw = resp.headers.get("Retry-After")
+    if raw is None:
+        return None
+    raw = raw.strip()
+    try:
+        seconds = float(raw)
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if when is None:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        seconds = (when - datetime.now(timezone.utc)).total_seconds()
+    if not math.isfinite(seconds):
+        return None
+    return max(0.0, seconds)
+
+
+def _retry_delay(resp: httpx.Response) -> float | None:
+    """Seconds to wait before retrying this response, or None to not retry.
+
+    502/503/504 get a jittered backoff; a 429 is retried only when it names a
+    ``Retry-After`` of at most ``_MAX_RETRY_AFTER`` seconds."""
+    if resp.status_code in _RETRY_STATUSES:
+        return _jitter.uniform(0.5, 1.5)
+    if resp.status_code == 429:
+        after = _retry_after_seconds(resp)
+        if after is not None and after <= _MAX_RETRY_AFTER:
+            return after
+    return None
+
 
 # Matches a GitLab project URL; captures the namespace/project path before any
 # `/-/...` suffix (merge_requests, pipelines, issues, etc.).
@@ -69,7 +133,7 @@ class GitLabClient:
         self._client = httpx.AsyncClient(
             base_url=self.config.api_url,
             headers={"Content-Type": "application/json"},
-            timeout=self.config.timeout,
+            timeout=httpx.Timeout(self.config.timeout, connect=min(10, self.config.timeout)),
             verify=self.config.ssl_verify,
             # Reject every cookie. The GitLab REST API needs none, and in oauth
             # mode ``with_bearer`` shares this one client across users; without
@@ -80,6 +144,10 @@ class GitLabClient:
             cookies=http.cookiejar.CookieJar(
                 policy=http.cookiejar.DefaultCookiePolicy(allowed_domains=[])
             ),
+            # verify= on the transport too: httpx 0.28 ignores the client-level
+            # verify once a transport is supplied, but the client-level one is
+            # still used for proxy mounts, so both carry the same value.
+            transport=httpx.AsyncHTTPTransport(retries=2, verify=self.config.ssl_verify),
         )
 
     def with_bearer(self, token: str) -> GitLabClient:
@@ -124,17 +192,57 @@ class GitLabClient:
                 msg = f"Invalid path segment {segment!r}: '.' and '..' are not allowed"
                 raise GitLabError(msg)
 
+    def _unreachable(self, e: httpx.TransportError) -> GitLabConnectionError:
+        # Strip any userinfo so a credential embedded in the URL never lands in an error.
+        safe = httpx.URL(self.config.url).copy_with(username=None, password=None)
+        msg = f"Cannot reach GitLab at {safe}: {e}"
+        return GitLabConnectionError(msg)
+
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """One send path for every verb, so refresh-on-401 cannot drift between
         ``_request`` and ``get_paged``. On a 401 with stored credentials it
         refreshes once (covering revocation or clock skew) and retries; the
-        refresh raises ``GitLabAuthError`` on failure rather than looping."""
+        refresh raises ``GitLabAuthError`` on failure rather than looping.
+
+        R2: idempotent GETs are also retried on a transient upstream status
+        (502/503/504, or a 429 naming a short ``Retry-After``) with jitter; writes
+        are never retried. A timeout and an unreachable host become distinct
+        expected errors (the split is ported from mcp-argocd), and a
+        ``ConnectTimeout`` counts as unreachable. Connection-level failures are
+        retried beneath this by ``AsyncHTTPTransport(retries=2)``.
+
+        The refresh-on-401 retry sits inside the status-retry loop, so on the
+        second attempt it can fire again: worst case is 4 sends (2 attempts, each
+        a request plus one post-refresh request)."""
         self._reject_dot_segments(path)
-        resp = await self._client.request(method, path, headers=await self._headers(), **kwargs)
-        if resp.status_code == 401 and self._credentials is not None:
-            await self._credentials.refresh()
-            resp = await self._client.request(method, path, headers=await self._headers(), **kwargs)
-        return resp
+        resp: httpx.Response
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                resp = await self._client.request(
+                    method, path, headers=await self._headers(), **kwargs
+                )
+                if resp.status_code == 401 and self._credentials is not None:
+                    await self._credentials.refresh()
+                    resp = await self._client.request(
+                        method, path, headers=await self._headers(), **kwargs
+                    )
+            except httpx.ConnectTimeout as e:
+                # A connect timeout means the host was never reached — treat it as
+                # unreachable, not slow (it is a TimeoutException subclass, so it
+                # must be caught before the timeout branch).
+                raise self._unreachable(e) from e
+            except httpx.TimeoutException as e:
+                msg = f"Request to GitLab timed out: {e}"
+                raise GitLabTimeoutError(msg) from e
+            except httpx.TransportError as e:
+                raise self._unreachable(e) from e
+            if method == "GET" and attempt < _MAX_ATTEMPTS:
+                delay = _retry_delay(resp)
+                if delay is not None:
+                    await asyncio.sleep(delay)
+                    continue
+            return resp
+        return resp  # pragma: no cover — the loop always returns
 
     @staticmethod
     def _encode_id(project_id: str | int) -> str:
@@ -177,6 +285,13 @@ class GitLabClient:
             raise GitLabAuthError(resp.status_code, resp.text)
         if resp.status_code == 404:
             raise GitLabNotFoundError(resp.text)
+        if resp.status_code == 429:
+            raise GitLabRateLimitError(
+                resp.status_code,
+                resp.reason_phrase or "",
+                resp.text,
+                retry_after=_retry_after_seconds(resp),
+            )
         if not resp.is_success:
             raise GitLabApiError(resp.status_code, resp.reason_phrase or "", resp.text)
 

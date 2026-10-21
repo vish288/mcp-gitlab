@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -27,6 +28,12 @@ _TOKEN_ENV_VARS = (
 # Hosts an HTTP transport may bind without a bearer token: the loopback
 # interface is only reachable from the same machine.
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+# Sentinel for "a local sign-in exists" during CLI validation, set on the
+# throwaway config so validate() accepts a signed-in user with no env token
+# without opening (and leaking) a credentials AsyncClient. The lifespan does the
+# real CredentialStore.load().
+_SIGNED_IN = object()
 
 
 def _apply_token_http_auth(mcp: Any, host: str) -> None:
@@ -150,15 +157,42 @@ def main(
         format="%(name)s | %(message)s",
     )
 
+    from .config import GitLabConfig
     from .servers import prompts, resources  # noqa: F401 — registers decorators
     from .servers.gitlab import mcp
 
+    # Validate configuration before run_async so a bad config is one clear
+    # `Error:` line + exit 2, not a traceback from inside the lifespan (D7).
+    # from_env, the stored-credential existence check, and validate() all sit in
+    # the one try: from_env raises on a bad GITLAB_TIMEOUT, a corrupt
+    # credentials.json raises json.JSONDecodeError (a ValueError subclass), and
+    # validate() raises on a missing URL/token or missing oauth settings. The
+    # lifespan keeps its own validate() for the in-process test path.
+    try:
+        cfg = GitLabConfig.from_env()
+        if auth != "oauth" and not cfg.token and cfg.url:
+            # Existence check only — do NOT call .load(), which opens an
+            # AsyncClient we would never close. Mirrors the lifespan's local
+            # sign-in so a user signed in via `mcp-gitlab auth login` (no env
+            # token) is not wrongly rejected; the lifespan does the real load.
+            from .local_auth import CredentialStore, host_key
+
+            store = CredentialStore(verify=cfg.ssl_verify, timeout=cfg.timeout)
+            try:
+                signed_in = host_key(cfg.url) in store.all()
+            except json.JSONDecodeError as e:
+                msg = f"credentials file {store.path} is not valid JSON: {e}"
+                raise ValueError(msg) from e
+            if signed_in:
+                cfg.credentials = _SIGNED_IN
+        cfg.validate()
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        ctx.exit(2)
+
     if auth == "oauth":
-        from .config import GitLabConfig
         from .oauth import GitLabProvider
 
-        cfg = GitLabConfig.from_env()
-        cfg.validate()
         mcp.auth = GitLabProvider(cfg)
         logging.getLogger(__name__).info(
             "Auth: oauth (GitLab app %s, scopes %s)", cfg.oauth_client_id, cfg.oauth_scopes

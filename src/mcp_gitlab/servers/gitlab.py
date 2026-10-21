@@ -27,8 +27,11 @@ from ..config import GitLabConfig, read_only_sources
 from ..exceptions import (
     GitLabApiError,
     GitLabAuthError,
+    GitLabConnectionError,
     GitLabError,
     GitLabNotFoundError,
+    GitLabRateLimitError,
+    GitLabTimeoutError,
     GitLabWriteDisabledError,
 )
 
@@ -284,6 +287,24 @@ def _err(error: Exception) -> dict[str, Any]:
                 "This server is deployed read-only; writes cannot be enabled from the client. "
                 "Ask the deployer."
             )
+    elif isinstance(error, GitLabRateLimitError):
+        detail["status_code"] = error.status_code
+        detail["body"] = error.body
+        if error.retry_after is not None:
+            detail["retry_after"] = error.retry_after
+        detail["hint"] = (
+            "Rate limited by GitLab. The client retries a 429 once when Retry-After <= 5s; "
+            "otherwise wait retry_after seconds, then retry."
+        )
+    elif isinstance(error, GitLabTimeoutError):
+        detail["hint"] = (
+            "Request to GitLab timed out. The instance may be slow; retry, or raise GITLAB_TIMEOUT."
+        )
+    elif isinstance(error, GitLabConnectionError):
+        detail["hint"] = (
+            "Could not reach GitLab. Check GITLAB_URL, that the instance is up, and that DNS and "
+            "network/proxy settings let this host connect."
+        )
     elif isinstance(error, GitLabApiError):
         detail["status_code"] = error.status_code
         detail["body"] = error.body
@@ -291,8 +312,6 @@ def _err(error: Exception) -> dict[str, Any]:
             detail["hint"] = "Conflict — resource may already exist or be locked."
         elif error.status_code == 422:
             detail["hint"] = "Validation failed — check required fields and formats."
-        elif error.status_code == 429:
-            detail["hint"] = "Rate limited. Wait before retrying."
     return detail
 
 

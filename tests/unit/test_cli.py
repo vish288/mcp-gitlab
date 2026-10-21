@@ -305,3 +305,92 @@ def test_sigint_exits_130(tmp_path):
     assert result.exit_code == 130
     assert "Cancelled" in result.output
     assert "Traceback" not in result.output
+
+
+def test_missing_config_exits_2_with_one_line():
+    """D7: a missing GITLAB_URL is one clear ``Error:`` line and exit 2, not a traceback."""
+    runner = CliRunner()
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", {}, clear=True),
+    ):
+        result = runner.invoke(main, [])
+    assert result.exit_code == 2
+    lines = [ln for ln in result.output.splitlines() if ln.strip()]
+    assert len(lines) == 1
+    assert lines[0].startswith("Error:")
+    assert "GITLAB_URL" in lines[0]
+    run_async.assert_not_awaited()
+
+
+def test_invalid_timeout_exits_2():
+    """A bad GITLAB_TIMEOUT is surfaced as the same one-line exit-2 error, not a traceback."""
+    runner = CliRunner()
+    env = {"GITLAB_URL": TEST_URL, "GITLAB_TOKEN": "x", "GITLAB_TIMEOUT": "abc"}
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", env, clear=True),
+    ):
+        result = runner.invoke(main, [])
+    assert result.exit_code == 2
+    assert "GITLAB_TIMEOUT" in result.output
+    run_async.assert_not_awaited()
+
+
+def test_oauth_missing_settings_exits_2():
+    """oauth mode with missing settings exits 2 with one line, not a traceback."""
+    runner = CliRunner()
+    env = {"GITLAB_URL": TEST_URL, "GITLAB_AUTH": "oauth"}
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", env, clear=True),
+    ):
+        result = runner.invoke(main, ["--transport", "streamable-http"])
+    assert result.exit_code == 2
+    assert "OAuth" in result.output
+    run_async.assert_not_awaited()
+
+
+def test_signed_in_without_env_token_starts(tmp_path):
+    """A user signed in via `mcp-gitlab auth login` (credentials file present, no
+    env token) must start the server, not be rejected for a missing token."""
+    runner = CliRunner()
+    env = _no_token_env(tmp_path, GITLAB_URL=TEST_URL)
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", env, clear=True),
+    ):
+        CredentialStore().save(
+            TEST_URL,
+            {
+                "client_id": "cid",
+                "access_token": "at",
+                "refresh_token": "rt",
+                "expires_at": 9999999999,
+                "scopes": ["api"],
+            },
+        )
+        result = runner.invoke(main, [])
+    assert result.exit_code == 0, result.output
+    run_async.assert_awaited_once()
+
+
+def test_corrupt_credentials_exits_2(tmp_path, monkeypatch):
+    """A corrupt credentials.json (no env token) exits 2 with a clear message
+    naming the file, not a traceback."""
+    creds = tmp_path / "mcp-gitlab" / "credentials.json"
+    creds.parent.mkdir(parents=True)
+    creds.write_text("{not json", encoding="utf-8")
+    runner = CliRunner()
+    env = {"GITLAB_URL": TEST_URL, "XDG_CONFIG_HOME": str(tmp_path), "APPDATA": str(tmp_path)}
+    with (
+        patch("mcp_gitlab.servers.gitlab.mcp.run_async", new_callable=AsyncMock) as run_async,
+        patch.dict("os.environ", env, clear=True),
+    ):
+        result = runner.invoke(main, [])
+    assert result.exit_code == 2
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert "credentials file" in result.output
+    assert "is not valid JSON" in result.output
+    assert str(creds) in result.output
+    run_async.assert_not_awaited()

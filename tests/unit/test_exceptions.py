@@ -5,14 +5,18 @@ import pytest
 from mcp_gitlab.exceptions import (
     GitLabApiError,
     GitLabAuthError,
+    GitLabConnectionError,
     GitLabError,
     GitLabNotFoundError,
+    GitLabRateLimitError,
+    GitLabTimeoutError,
     GitLabWriteDisabledError,
 )
 from mcp_gitlab.servers.gitlab import _err
 
 API = {"error", "status_code", "body"}
 HINTED = API | {"hint"}
+RATELIMIT = HINTED | {"retry_after"}
 
 
 @pytest.mark.parametrize(
@@ -22,13 +26,27 @@ HINTED = API | {"hint"}
         (GitLabApiError(500, "Internal Server Error", "boom"), API),
         (GitLabApiError(409, "Conflict"), HINTED),
         (GitLabApiError(422, "Unprocessable"), HINTED),
-        (GitLabApiError(429, "Too Many Requests"), HINTED),
+        (GitLabRateLimitError(429, "Too Many Requests", retry_after=3.0), RATELIMIT),
         (GitLabAuthError(401), HINTED),
         (GitLabAuthError(403), HINTED),
         (GitLabNotFoundError("gone"), HINTED),
         (GitLabWriteDisabledError(), {"error", "hint"}),
+        (GitLabTimeoutError("slow"), {"error", "hint"}),
+        (GitLabConnectionError("down"), {"error", "hint"}),
     ],
-    ids=["base", "api-500", "api-409", "api-422", "api-429", "auth-401", "auth-403", "404", "ro"],
+    ids=[
+        "base",
+        "api-500",
+        "api-409",
+        "api-422",
+        "rate-limit-429",
+        "auth-401",
+        "auth-403",
+        "404",
+        "ro",
+        "timeout",
+        "connection",
+    ],
 )
 def test_err_envelope_key_set(exc, keys):
     """Exact key set per exception type; dropping ``body`` or ``hint`` fails here."""

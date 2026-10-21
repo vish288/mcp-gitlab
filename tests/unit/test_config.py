@@ -229,3 +229,15 @@ def test_oauth_base_url_strips_trailing_slash():
     with patch.dict(os.environ, env, clear=True):
         config = GitLabConfig.from_env()
     assert config.oauth_base_url == "https://mcp.example.com"
+
+
+def test_invalid_timeout_names_the_variable():
+    env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_TOKEN": "x", "GITLAB_TIMEOUT": "30s"}
+    with patch.dict(os.environ, env, clear=True), pytest.raises(ValueError, match="GITLAB_TIMEOUT"):
+        GitLabConfig.from_env()
+
+
+def test_non_positive_timeout_rejected():
+    env = {"GITLAB_URL": "https://gitlab.example.com", "GITLAB_TOKEN": "x", "GITLAB_TIMEOUT": "0"}
+    with patch.dict(os.environ, env, clear=True), pytest.raises(ValueError, match="positive"):
+        GitLabConfig.from_env()
