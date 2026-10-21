@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.21.1] - 2026-10-21
+
+### Chores
+- chore: adopt the vish288/.github Copier template (v1.1.0) (56e8f0a)
+
+
 ## [0.21.0] - 2026-10-18
 
 ### Features
