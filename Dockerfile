@@ -1,18 +1,15 @@
+# syntax=docker/dockerfile:1
 # Minimal non-root image for mcp-gitlab.
 #
 #   docker build -t mcp-gitlab .
 #
 # Run (stdio; the image defaults to locked read-only — pass
-# -e MCP_READ_ONLY=false to allow writes):
-#   docker run --rm -i \
-#     -e ARGOCD_URL=https://argocd.example.com \
-#     -e ARGOCD_TOKEN=<token> \
-#     mcp-gitlab
+# -e MCP_READ_ONLY=false to allow writes). Pass the server's environment
+# variables with -e; see README.md for the configuration reference:
+#   docker run --rm -i -e NAME=value … mcp-gitlab
 #
 # Serve over HTTP (requires a bearer token on a non-loopback host):
-#   docker run --rm -p 9000:9000 \
-#     -e ARGOCD_URL=... -e ARGOCD_TOKEN=... \
-#     -e ARGOCD_HTTP_BEARER_TOKEN=$(openssl rand -hex 32) \
+#   docker run --rm -p 9000:9000 -e NAME=value … \
 #     mcp-gitlab --transport streamable-http --host 0.0.0.0 --port 9000
 FROM python:3.13-slim
 

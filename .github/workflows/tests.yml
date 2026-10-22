@@ -3,6 +3,6 @@ name: Tests
 on: [push, pull_request]
 jobs:
   test:
-    uses: vish288/.github/.github/workflows/tests.yml@e433546a751a1b2947e0216d24fd1ad7b1bf94de # v1.1.0
+    uses: vish288/.github/.github/workflows/tests.yml@95ed4535c9e1cc51933779144d23033abf8990e2 # v1.1.1
     with:
       coverage_min: 98
