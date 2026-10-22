@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.21.2] - 2026-10-22
+
+### Bug Fixes
+- fix(transport): per-phase timeout, GET retries, clean startup (R2) (8144a62)
+
+### Chores
+- chore(fleet): template v1.1.1 (8b50620)
+
+
 ## [0.21.1] - 2026-10-21
 
 ### Chores
