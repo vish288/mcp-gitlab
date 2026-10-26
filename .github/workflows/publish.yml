@@ -59,7 +59,7 @@ jobs:
           if [ "$FAIL_AT" = pypi ] && [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "${GITHUB_RUN_ATTEMPT:-1}" = 1 ] && [ "$PYPI_STATE" != "done" ]; then
             echo "::error::test hook fail_at=pypi (attempt 1, state=$PYPI_STATE): failing before any write"; exit 1
           fi
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         continue-on-error: true   # publish-finish.yml's Confirm step is the success criterion
         with:
           skip-existing: true
