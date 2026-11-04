@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 jobs:
   reconcile:
-    uses: vish288/.github/.github/workflows/reconcile.yml@d9ccad503a1ba22822b588943e4998d1fff367ba # v1.1.1
+    uses: vish288/.github/.github/workflows/reconcile.yml@d9ccad503a1ba22822b588943e4998d1fff367ba # v1.2.0
     permissions:
       contents: read
       actions: write
