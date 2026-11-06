@@ -9,7 +9,7 @@ import json
 import math
 import random
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import quote, unquote
@@ -57,8 +57,8 @@ def _retry_after_seconds(resp: httpx.Response) -> float | None:
         if when is None:
             return None
         if when.tzinfo is None:
-            when = when.replace(tzinfo=timezone.utc)
-        seconds = (when - datetime.now(timezone.utc)).total_seconds()
+            when = when.replace(tzinfo=UTC)
+        seconds = (when - datetime.now(UTC)).total_seconds()
     if not math.isfinite(seconds):
         return None
     return max(0.0, seconds)

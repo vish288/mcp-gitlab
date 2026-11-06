@@ -6,7 +6,7 @@
     "mcp-gitlab": {
       "command": "uvx",
       "args": [
-        "mcp-gitlab"
+        "mcp-gitlab@0.21.3"
       ]
     }
   },
