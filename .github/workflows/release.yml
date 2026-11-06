@@ -27,7 +27,7 @@ on:
         default: none
 jobs:
   release:
-    uses: vish288/.github/.github/workflows/release.yml@e2819716202a8d9ce6ad753197ae3737f5a584b9 # v1.3.0
+    uses: vish288/.github/.github/workflows/release.yml@a95b5336113047c1876fe1fd5a624020d7adc1a0 # v1.3.1
     with:
       bump: ${{ inputs.bump }}
       version: ${{ inputs.version }}
