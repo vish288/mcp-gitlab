@@ -695,6 +695,7 @@ async def gitlab_create_project(
 @mcp.tool(
     tags={"gitlab", "projects", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_project(
@@ -889,6 +890,7 @@ async def gitlab_update_project_approval_rule(
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_project_approval_rule(
@@ -989,6 +991,7 @@ async def gitlab_update_mr_approval_rule(
 @mcp.tool(
     tags={"gitlab", "approvals", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_mr_approval_rule(
@@ -1074,6 +1077,7 @@ async def gitlab_share_project_with_group(
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_unshare_project_with_group(
@@ -1114,6 +1118,7 @@ async def gitlab_share_group_with_group(
 @mcp.tool(
     tags={"gitlab", "groups", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_unshare_group_with_group(
@@ -1180,6 +1185,7 @@ async def gitlab_create_branch(
 @mcp.tool(
     tags={"gitlab", "branches", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_branch(
@@ -1633,6 +1639,8 @@ async def gitlab_rebase_mr(
 @mcp.tool(
     tags={"gitlab", "merge_requests", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+    # Raise the 50k-char persist-to-disk threshold (max 500k): a full MR diff can be large.
+    meta={"anthropic/maxResultSizeChars": 200000},
 )
 @tool_result
 async def gitlab_mr_changes(
@@ -1726,6 +1734,7 @@ async def gitlab_add_mr_note(
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_mr_note(
@@ -1789,6 +1798,7 @@ async def gitlab_award_emoji(
 @mcp.tool(
     tags={"gitlab", "notes", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_remove_emoji(
@@ -1991,6 +2001,8 @@ async def _resolve_ref(client: GitLabClient, enc: str, ref: str | None) -> str:
 @mcp.tool(
     tags={"gitlab", "files", "read"},
     annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": True},
+    # Raise the 50k-char persist-to-disk threshold (max 500k): a large file at a ref.
+    meta={"anthropic/maxResultSizeChars": 200000},
 )
 @tool_result
 async def gitlab_get_file(
@@ -2304,6 +2316,7 @@ async def gitlab_publish_draft_notes(
 @mcp.tool(
     tags={"gitlab", "review", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_draft_note(
@@ -2598,6 +2611,7 @@ async def gitlab_retry_pipeline(
 @mcp.tool(
     tags={"gitlab", "pipelines", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_cancel_pipeline(
@@ -2670,6 +2684,7 @@ async def gitlab_play_job(
 @mcp.tool(
     tags={"gitlab", "jobs", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_cancel_job(
@@ -2793,6 +2808,7 @@ async def gitlab_create_tag(
 @mcp.tool(
     tags={"gitlab", "tags", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_tag(
@@ -2913,6 +2929,7 @@ async def gitlab_update_release(
 @mcp.tool(
     tags={"gitlab", "releases", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_release(
@@ -3045,6 +3062,7 @@ async def gitlab_update_variable(
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_variable(
@@ -3164,6 +3182,7 @@ async def gitlab_update_group_variable(
 @mcp.tool(
     tags={"gitlab", "variables", "write"},
     annotations={"destructiveHint": True, "readOnlyHint": False, "openWorldHint": True},
+    meta={"anthropic/requiresUserInteraction": True},
 )
 @tool_result(write=True)
 async def gitlab_delete_group_variable(

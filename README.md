@@ -540,6 +540,7 @@ The server provides [MCP prompts](https://modelcontextprotocol.io/docs/concepts/
 - **SSL verification**: `GITLAB_SSL_VERIFY=true` by default. Only disable for self-signed certificates in trusted networks.
 - **CI/CD variable masking**: `gitlab_list_variables` and `gitlab_list_group_variables` automatically mask values of variables marked as masked in GitLab, returning `***MASKED***` instead of the actual value.
 - **MCP tool annotations**: Each tool declares `readOnlyHint`, `destructiveHint`, and `idempotentHint` for client-side permission prompts.
+- **Approval on destructive tools**: each destructive tool carries the `anthropic/requiresUserInteraction` client-vendor meta, so Claude Code forces a permission prompt on every call — even under `acceptEdits`, `auto`, and `bypassPermissions` — with no "don't ask again". The meta is inert for clients that do not read it.
 - **Credential storage**: The server reads `GITLAB_TOKEN` from the environment and never writes it. `mcp-gitlab auth login` stores OAuth tokens in `~/.config/mcp-gitlab/credentials.json` (mode 0600) and refreshes them in place.
 
 ## Rate Limits & Permissions

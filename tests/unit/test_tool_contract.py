@@ -940,3 +940,22 @@ async def test_network_error_is_expected(tool_client, caplog):
     assert "reach gitlab" in body["hint"].lower()
     assert result.structured_content is None
     assert not [r for r in caplog.records if r.name == "mcp_gitlab.servers.gitlab"]
+
+
+async def test_destructive_tools_require_user_interaction():
+    """Exactly the destructiveHint tools carry the ``anthropic/requiresUserInteraction``
+    meta (G8): Claude Code then forces a permission prompt on every destructive call and
+    never on a read. ``maxResultSizeChars`` on a bulk reader is a different meta key and
+    must not count as requiresUserInteraction.
+    """
+    for t in await mcp._list_tools():
+        destructive = bool(t.annotations and t.annotations.destructive_hint)
+        requires = bool((t.meta or {}).get("anthropic/requiresUserInteraction"))
+        assert destructive == requires, t.name
+
+
+async def test_bulk_readers_raise_result_size_cap():
+    """gitlab_mr_changes and gitlab_get_file lift the 50k persist-to-disk cap."""
+    by_name = {t.name: t for t in await mcp._list_tools()}
+    for name in ("gitlab_mr_changes", "gitlab_get_file"):
+        assert (by_name[name].meta or {}).get("anthropic/maxResultSizeChars") == 200000
