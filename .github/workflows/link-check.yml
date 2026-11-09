@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: "0 6 * * 1" # Mondays, 06:00 UTC
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   links:
-    uses: vish288/.github/.github/workflows/link-check.yml@102fe61c96d011ed881c7849ce3c19d4b9aa8da5 # v1.4.0
+    uses: vish288/.github/.github/workflows/link-check.yml@f59da4e8bae11ace9d2f69e43d8601ff9cb68c04 # v1.4.1

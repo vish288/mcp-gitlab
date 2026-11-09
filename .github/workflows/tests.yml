@@ -1,8 +1,10 @@
 name: Tests
 # Stub: calls the reusable workflow in vish288/.github, pinned to a release commit SHA.
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   test:
-    uses: vish288/.github/.github/workflows/tests.yml@102fe61c96d011ed881c7849ce3c19d4b9aa8da5 # v1.4.0
+    uses: vish288/.github/.github/workflows/tests.yml@f59da4e8bae11ace9d2f69e43d8601ff9cb68c04 # v1.4.1
     with:
       coverage_min: 98
