@@ -52,3 +52,21 @@ async def test_2026_07_28_support(monkeypatch):
     async with Client(mcp, mode="2026-07-28") as client:
         tools = await client.list_tools()
         assert len(tools) == _decorators("tool")
+
+
+async def test_server_identity_and_cache_hints(monkeypatch):
+    """serverInfo reports the installed package version and the website (#156); list
+    results carry the 2026-07-28 cache hints ttlMs=300000 / cacheScope=private (#155).
+    """
+    from importlib.metadata import version as pkg_version
+
+    monkeypatch.setenv("GITLAB_URL", "https://gitlab.example.com")
+    monkeypatch.setenv("GITLAB_TOKEN", "test-token")
+    monkeypatch.delenv("GITLAB_READ_ONLY", raising=False)
+    async with Client(mcp, mode="2026-07-28") as client:
+        result = await client.session.list_tools()
+        assert result.ttl_ms == 300000
+        assert result.cache_scope == "private"
+        info = result.meta["io.modelcontextprotocol/serverInfo"]
+        assert info["version"] == pkg_version("mcp-gitlab")
+        assert info["websiteUrl"] == "https://vish288.github.io/mcp-install?server=mcp-gitlab"
