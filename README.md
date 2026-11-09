@@ -667,6 +667,8 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
+Please read the [contributing guide](https://github.com/vish288/.github/blob/main/CONTRIBUTING.md) and the [security policy](https://github.com/vish288/.github/blob/main/SECURITY.md) before opening a pull request or reporting a vulnerability.
+
 ## License
 
 MIT
