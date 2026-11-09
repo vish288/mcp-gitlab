@@ -7,20 +7,22 @@
     "url": "https://github.com/vish288/mcp-gitlab",
     "source": "github"
   },
-  "version": "0.22.0",
+  "version": "0.23.0",
   "websiteUrl": "https://vish288.github.io/mcp-install?server=mcp-gitlab",
   "icons": [
     {
       "src": "https://raw.githubusercontent.com/vish288/mcp-gitlab/main/assets/icon.svg",
       "mimeType": "image/svg+xml",
-      "sizes": ["any"]
+      "sizes": [
+        "any"
+      ]
     }
   ],
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-gitlab",
-      "version": "0.22.0",
+      "version": "0.23.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

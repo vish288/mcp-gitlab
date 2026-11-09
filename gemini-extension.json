@@ -1,12 +1,12 @@
 {
   "name": "mcp-gitlab",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "GitLab MCP server (MCP 2026-07-28): projects, MRs, pipelines, CI/CD, issues; writes or read-only",
   "mcpServers": {
     "mcp-gitlab": {
       "command": "uvx",
       "args": [
-        "mcp-gitlab@0.22.0"
+        "mcp-gitlab@0.23.0"
       ]
     }
   },
