@@ -1,17 +1,20 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.vish288/mcp-gitlab",
+  "title": "GitLab",
   "description": "GitLab MCP server (MCP 2026-07-28): projects, MRs, pipelines, CI/CD, issues; writes or read-only",
   "repository": {
     "url": "https://github.com/vish288/mcp-gitlab",
     "source": "github"
   },
   "version": "0.22.0",
+  "websiteUrl": "https://vish288.github.io/mcp-install?server=mcp-gitlab",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-gitlab",
       "version": "0.22.0",
+      "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
       },
