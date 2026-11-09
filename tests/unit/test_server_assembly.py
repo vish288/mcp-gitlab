@@ -70,3 +70,4 @@ async def test_server_identity_and_cache_hints(monkeypatch):
         info = result.meta["io.modelcontextprotocol/serverInfo"]
         assert info["version"] == pkg_version("mcp-gitlab")
         assert info["websiteUrl"] == "https://vish288.github.io/mcp-install?server=mcp-gitlab"
+        assert info["icons"][0]["src"].endswith("mcp-gitlab/main/assets/icon.svg")

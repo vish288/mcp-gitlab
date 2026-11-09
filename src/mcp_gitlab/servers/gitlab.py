@@ -19,7 +19,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools import ToolResult
-from mcp.types import TextContent
+from mcp.types import Icon, TextContent
 from pydantic import Field
 
 from ..client import GitLabClient
@@ -114,6 +114,13 @@ mcp = FastMCP(
     name="GitLab MCP Server",
     version=version("mcp-gitlab"),
     website_url="https://vish288.github.io/mcp-install?server=mcp-gitlab",
+    icons=[
+        Icon(
+            src="https://raw.githubusercontent.com/vish288/mcp-gitlab/main/assets/icon.svg",
+            mime_type="image/svg+xml",
+            sizes=["any"],
+        )
+    ],
     instructions=(
         "Provides tools for interacting with GitLab API"
         " — projects, MRs, pipelines, CI/CD, approvals, and more."

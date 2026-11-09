@@ -9,6 +9,13 @@
   },
   "version": "0.22.0",
   "websiteUrl": "https://vish288.github.io/mcp-install?server=mcp-gitlab",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/vish288/mcp-gitlab/main/assets/icon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"]
+    }
+  ],
   "packages": [
     {
       "registryType": "pypi",

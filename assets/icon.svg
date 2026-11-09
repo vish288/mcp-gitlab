@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="GitLab MCP server">
+  <title>GitLab MCP server</title>
+  <rect x="4" y="4" width="120" height="120" rx="14" fill="#847492" stroke="#6f6080" stroke-width="8" />
+  <g fill="none" stroke="#0b0c0f" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter">
+        <path d="M46 44V92" />
+        <path d="M84 58C84 80 58 78 46 92" />
+        <circle cx="46" cy="36" r="9" fill="#847492" />
+        <circle cx="84" cy="50" r="9" fill="#847492" />
+        <circle cx="46" cy="98" r="9" fill="#0b0c0f" stroke="none" />
+        </g>
+  
+</svg>
