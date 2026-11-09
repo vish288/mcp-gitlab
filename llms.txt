@@ -6,7 +6,7 @@ MCP server that wraps the GitLab REST API. Works with GitLab.com and self-hosted
 
 - **Install**: `uvx mcp-gitlab`
 - **Version**: 0.22.0
-- **Python**: >=3.10
+- **Python**: >=3.11
 - **License**: MIT
 - **Protocol**: MCP 2026-07-28 (MCP 2.0); compatible with 2025-11-25 clients; built on FastMCP 4.x
 - **Transport**: stdio (default), streamable-http (recommended for remote), SSE (deprecated by the 2026-07-28 spec)
