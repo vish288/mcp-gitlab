@@ -3,7 +3,7 @@
     "gitlab": {
       "command": "uvx",
       "args": [
-        "mcp-gitlab@0.23.0"
+        "mcp-gitlab@0.24.0"
       ],
       "env": {
         "GITLAB_TOKEN": "${user_config.gitlab_token}",
