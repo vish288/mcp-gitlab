@@ -102,6 +102,12 @@ def _apply_token_http_auth(mcp: Any, host: str) -> None:
 @click.option("--gitlab-token", hidden=True, help="Deprecated: set GITLAB_TOKEN instead")
 @click.option("--read-only", is_flag=True, help="Disable write operations")
 @click.option(
+    "--toolsets",
+    envvar="MCP_TOOLSETS",
+    help="Comma list of tool groups to expose "
+    "(code, review, ci, issues, release, admin; default: all)",
+)
+@click.option(
     "--auth",
     type=click.Choice(["token", "oauth"]),
     envvar="GITLAB_AUTH",
@@ -117,6 +123,7 @@ def main(
     gitlab_url: str | None,
     gitlab_token: str | None,
     read_only: bool,
+    toolsets: str | None,
     auth: str,
 ) -> None:
     """Run the GitLab MCP server. Subcommands: auth."""
@@ -136,6 +143,10 @@ def main(
         os.environ["GITLAB_TOKEN"] = gitlab_token
     if read_only:
         os.environ["GITLAB_READ_ONLY"] = "true"
+    # --toolsets writes the env the lifespan reads; validation happens below with the rest
+    # of the startup config so an unknown group is one clear line and exit 2.
+    if toolsets:
+        os.environ["MCP_TOOLSETS"] = toolsets
     os.environ["GITLAB_AUTH"] = auth
 
     if auth == "oauth" and transport != "streamable-http":
@@ -159,7 +170,7 @@ def main(
 
     from .config import GitLabConfig
     from .servers import prompts, resources  # noqa: F401 — registers decorators
-    from .servers.gitlab import mcp
+    from .servers.gitlab import mcp, parse_toolsets
 
     # Validate configuration before run_async so a bad config is one clear
     # `Error:` line + exit 2, not a traceback from inside the lifespan (D7).
@@ -186,6 +197,7 @@ def main(
             if signed_in:
                 cfg.credentials = _SIGNED_IN
         cfg.validate()
+        parse_toolsets(os.getenv("MCP_TOOLSETS"))
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         ctx.exit(2)

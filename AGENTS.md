@@ -60,7 +60,7 @@ pushed to a registry.
 - Errors: expected failures are `isError: true` results whose text content is the `{"error", "status_code"?, "body"?, "hint"?}` object and which set no `structuredContent` (a strict client — the TS MCP SDK — validates `structuredContent` against the tool's output schema even on an error, and the schema rejects the error body); bugs are `isError: true` with `TypeName: message` text and no `structuredContent`, logged with a traceback
 - `_slim_pipeline` / `_slim_job` trim pipeline and job payloads; tools expose `slim=True` by default
 - Write access control: a truthy `MCP_READ_ONLY` / `GITLAB_READ_ONLY` locks the server read-only — `_lock_read_only` hides the write tools from `tools/list`, and `_check_write(ctx)` (via `@tool_result(write=True)`, or inline in `gitlab_merge_mr_sequence`) raises `GitLabWriteDisabledError` as defence in depth (see Read-only mode)
-- Tags: every tool tagged with `{"gitlab", "<category>", "read"|"write"}`
+- Tags: every tool tagged `{"gitlab", "<category>", "read"|"write"}`; five MR tools also carry a second domain tag (`list_mr_pipelines`, `list_mr_commits`, `approve_mr`, `unapprove_mr`, `get_mr_approvals`), which is why they are listed in two toolset groups
 - Parameters use `Annotated[type, Field(description=...)]`
 - Client auth is a per-request header: `PRIVATE-TOKEN` in token mode, `Bearer` from `get_access_token()` in oauth mode. `GitLabClient.with_bearer(token)` returns a shallow copy that shares the connection pool but swaps the auth header. The shared `httpx.AsyncClient` uses a cookie jar that rejects every cookie (empty-`allowed_domains` policy) so a `Set-Cookie` from GitLab is never stored on the shared client and replayed on another user's request
 - `GitLabClient._send` is the one send path for every verb. With stored local-sign-in credentials it sets a `Bearer` header from `LocalCredentials.bearer()` (proactive refresh within a 300 s margin) and, on a 401, refreshes once and retries; refresh failure raises `GitLabAuthError` rather than looping
@@ -101,10 +101,12 @@ sources (any locking one wins; a falsy value never unlocks and logs a WARNING; a
 value fails closed), and the lifespan calls `_lock_read_only(server)`, which
 `server.disable(tags={"write"})` so write tools and write-workflow prompts drop out of
 `tools/list`/`prompts/list` and `tools/call` on them returns "Unknown tool". The lock is
-computed once and never cleared; `src/` never calls `enable`/`enable_components`. The lock is
-unconditional on auth mode (oauth also hides by tag); the per-user `read_api` scope refusal in
-`_check_write` stays call-time. Every write tool MUST still call `_check_write(ctx)` (via
-`@tool_result(write=True)`, or inline as `gitlab_merge_mr_sequence` does) as defence in depth.
+computed once and never cleared; the only `enable` call in `src/` is the `MCP_TOOLSETS`
+allowlist (`_apply_toolsets`), which runs before the lock and never names the `write` tag, so
+the lock stays the last word. The lock is unconditional on auth mode (oauth also hides by
+tag); the per-user `read_api` scope refusal in `_check_write` stays call-time. Every write
+tool MUST still call `_check_write(ctx)` (via `@tool_result(write=True)`, or inline as
+`gitlab_merge_mr_sequence` does) as defence in depth.
 
 ### Naming convention
 - Pattern: `gitlab_{verb}_{resource}` (snake_case)
@@ -134,6 +136,32 @@ unconditional on auth mode (oauth also hides by tag); the per-user `read_api` sc
 
 The table counts the share/unshare tools under Groups, not Projects. There is no `gitlab_list_jobs` —
 get job IDs from `gitlab_get_pipeline(..., include_jobs=True)`.
+
+### Tool surface (MCP_TOOLSETS)
+
+`MCP_TOOLSETS` (or `--toolsets`) switches `tools/list` to an allowlist of coarse groups — named
+sets of the raw domain tags the tools already carry — so a client with a tool budget sees fewer.
+Resources and prompts stay listed regardless (fastmcp `enable(components=...)` re-lists them after
+the `enable(tags=..., only=True)` allowlist), and the read-only lock runs after the allowlist so it
+only ever removes more tools. Unset or `all` lists every tool; an unknown name exits 2.
+
+| Group | Raw tags | Tools | Read-only |
+|---|---|---|---|
+| `code` | files, branches, commits | 12 | 9 |
+| `review` | merge_requests, notes, discussions, review | 29 | 9 |
+| `ci` | pipelines, jobs, variables | 18 | 6 |
+| `issues` | issues | 5 | 2 |
+| `release` | tags, releases | 9 | 4 |
+| `admin` | projects, groups, approvals | 23 | 7 |
+| `all` (default) | every tag | 91 | 34 |
+
+The map is `TOOLSET_GROUPS` in `servers/gitlab.py`; `_apply_toolsets` runs in the lifespan before
+`_lock_read_only`. Five tools carry two domain tags and are listed in both groups:
+`gitlab_list_mr_commits` (code, review), `gitlab_list_mr_pipelines` (review, ci), and
+`gitlab_approve_mr` / `gitlab_unapprove_mr` / `gitlab_get_mr_approvals` (review, admin). A test
+asserts every raw domain tag belongs to exactly one group and only those five tools carry two.
+`review,ci` (46) and `code,review` (40) reach or pass Cursor's 40-tool warning; every single group
+stays under it.
 
 ## Common Workflows
 
@@ -168,6 +196,7 @@ plus an assistant acknowledgment.
 | token (see below) | yes, unless signed in via `mcp-gitlab auth login` | — | Personal access token, OAuth2 token, or `$CI_JOB_TOKEN` |
 | `GITLAB_READ_ONLY` | no | `false` | Truthy (or unrecognised) locks the server read-only: the write tools are not listed and are refused before any API call |
 | `MCP_READ_ONLY` | no | `false` | Same as `GITLAB_READ_ONLY`; shared name across the mcp-* servers. Either being truthy locks read-only, and nothing turns it off at runtime |
+| `MCP_TOOLSETS` | no | all | Comma list of tool groups (`code`, `review`, `ci`, `issues`, `release`, `admin`); unset or `all` lists every tool. Validated at startup (unknown name exits 2); `MCP_READ_ONLY` applies after the selection |
 | `GITLAB_TIMEOUT` | no | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | no | `true` | `false`/`0`/`no` skips verification — self-signed certs only |
 | `GITLAB_AUTH` | no | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy to GitLab; `streamable-http` only) |
@@ -184,7 +213,7 @@ The server reads the token from the first of `GITLAB_TOKEN`, `GITLAB_PAT`,
 `read_api` for read-only deployments. The server never persists an env token. Stored OAuth
 credentials live in `~/.config/mcp-gitlab/credentials.json`.
 
-CLI flags override env: `--gitlab-url`, `--read-only`, plus
+CLI flags override env: `--gitlab-url`, `--read-only`, `--toolsets`, plus
 `--transport {stdio,sse,streamable-http}` with `--host` (default `127.0.0.1`) and `--port`
 (default `8000`); host/port apply only to non-stdio transports (`--gitlab-token` is deprecated
 and hidden from `--help`; it still works and warns on stderr — set `GITLAB_TOKEN` instead). The

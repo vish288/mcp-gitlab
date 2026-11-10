@@ -127,10 +127,47 @@ Drop `MCP_READ_ONLY` to allow writes. On a shared or hosted server put it in the
 | `GITLAB_TOKEN` | Yes, unless signed in with `mcp-gitlab auth login` | - | Authentication token (see below) |
 | `MCP_READ_ONLY` | No | `false` | Shared name across the mcp-* servers. Any value other than `false`/`0`/`no`/`off`/empty locks the server read-only: the 57 write tools and write-workflow prompts are not listed, and nothing can turn it back off at runtime |
 | `GITLAB_READ_ONLY` | No | `false` | Per-server alias for `MCP_READ_ONLY`; either one locks the server read-only. `--read-only` can only raise the lock |
+| `MCP_TOOLSETS` | No | all | Comma list of tool groups to expose (see Toolsets); unset or `all` lists every tool. `MCP_READ_ONLY` still applies after the selection |
 | `GITLAB_HTTP_BEARER_TOKEN` | No | - | Bearer token (min 16 chars) required to bind an HTTP transport to a non-loopback host; clients send `Authorization: Bearer <token>`; token mode only |
 | `GITLAB_TIMEOUT` | No | `30` | Request timeout in seconds |
 | `GITLAB_SSL_VERIFY` | No | `true` | Set to `false` to skip SSL verification |
 | `GITLAB_AUTH` | No | `token` | `token` (PAT from env) or `oauth` (OAuth 2.1 proxy; see below) |
+
+### Toolsets
+
+Clients cap how many tools they forward: Cursor warns past **40 tools across all enabled
+servers**. `MCP_TOOLSETS` (or `--toolsets`) shrinks `tools/list` to one or more named groups —
+sets of the raw domain tags the tools already carry — so a single-job selection is cheap.
+Unset or `all` lists every tool. Names are lowercase and comma-separated; an unknown name
+exits 2 with the valid list. `MCP_READ_ONLY` still applies afterward and only ever removes
+more tools (the read-only column).
+
+| Group | Raw tags | Tools | Read-only |
+|-------|----------|-------|-----------|
+| `code` | files, branches, commits | 12 | 9 |
+| `review` | merge_requests, notes, discussions, review | 29 | 9 |
+| `ci` | pipelines, jobs, variables | 18 | 6 |
+| `issues` | issues | 5 | 2 |
+| `release` | tags, releases | 9 | 4 |
+| `admin` | projects, groups, approvals | 23 | 7 |
+| `all` (default) | every tag | 91 | 34 |
+
+Five tools carry two domain tags, so they are listed in both of their groups:
+`gitlab_list_mr_commits` (`code`, `review`), `gitlab_list_mr_pipelines` (`review`, `ci`), and
+`gitlab_approve_mr` / `gitlab_unapprove_mr` / `gitlab_get_mr_approvals` (`review`, `admin`).
+
+Every single group stays under 40, and so does `review,issues` (34). Two pairs do not, because
+the shared tools are counted once each: **`review,ci` lists 46 tools** and **`code,review` lists
+40**, so both reach or pass Cursor's 40-tool warning. Pick one group per job, or leave room for
+your other servers.
+
+```bash
+MCP_TOOLSETS=review uvx mcp-gitlab        # MR review: 29 tools
+uvx mcp-gitlab --toolsets ci              # pipelines, jobs, CI/CD variables: 18 tools
+MCP_TOOLSETS=issues,release uvx mcp-gitlab
+```
+
+Resources and prompts are unaffected by the selection.
 
 ### Supported Token Types
 
@@ -580,6 +617,9 @@ mcp-gitlab auth login|status|logout
 
 # CLI overrides for config
 GITLAB_TOKEN=glpat-xxx uvx mcp-gitlab --gitlab-url https://gitlab.example.com --read-only
+
+# Expose only one job's tools (same as MCP_TOOLSETS=review); see Toolsets above
+uvx mcp-gitlab --toolsets review
 ```
 
 `--gitlab-token` still works but is deprecated and hidden from `--help`: it exposes the token to

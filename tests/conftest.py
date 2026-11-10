@@ -27,11 +27,13 @@ OAUTH_BASE = "http://localhost"
 
 @pytest.fixture(autouse=True)
 def _no_ambient_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The locked read-only switch is deployer-set; no test should inherit it from the
-    runner's environment (the suite must stay green with ``MCP_READ_ONLY=true`` exported).
-    Tests that exercise the switch set the vars explicitly, which overrides this."""
+    """The locked read-only switch and the toolset selection are deployer-set; no test
+    should inherit them from the runner's environment (the suite must stay green with
+    ``MCP_READ_ONLY=true`` or ``MCP_TOOLSETS=review`` exported). Tests that exercise
+    either set the vars explicitly, which overrides this."""
     monkeypatch.delenv("MCP_READ_ONLY", raising=False)
     monkeypatch.delenv("GITLAB_READ_ONLY", raising=False)
+    monkeypatch.delenv("MCP_TOOLSETS", raising=False)
 
 
 @pytest.fixture

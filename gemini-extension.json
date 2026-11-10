@@ -36,6 +36,12 @@
       "sensitive": false
     },
     {
+      "name": "MCP_TOOLSETS",
+      "description": "Comma list of tool groups to expose (code, review, ci, issues, release, admin); unset or 'all' lists every tool. Shrinks tools/list for clients with a tool budget; MCP_READ_ONLY still applies after the selection",
+      "required": false,
+      "sensitive": false
+    },
+    {
       "name": "GITLAB_AUTH",
       "description": "Authentication mode: token (default) or oauth (OAuth 2.1 proxy; streamable-http only)",
       "required": false,

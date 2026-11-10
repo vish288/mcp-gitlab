@@ -7,6 +7,7 @@ import base64
 import functools
 import json
 import logging
+import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -84,6 +85,66 @@ def _lock_read_only(server: FastMCP, *, sources: list[str] | None = None) -> Non
     _log.info("read-only: LOCKED%s — write tools and prompts hidden", named)
 
 
+# MCP_TOOLSETS: coarse tool groups (workbench-backlog#160). A group is a named set of
+# the raw domain tags the tools already carry; selecting one or more (MCP_TOOLSETS, a
+# comma list, or --toolsets) switches tools/list to an allowlist of just those tools.
+# The five tools that carry two domain tags stay listed in both of their groups: an
+# MR's pipelines under `ci`, an MR's commits under `code`, and MR approval state under
+# `admin` (approve_mr, unapprove_mr, get_mr_approvals). Unset or `all` lists every
+# tool; MCP_READ_ONLY still applies after the allowlist and only ever removes tools.
+TOOLSET_GROUPS: dict[str, frozenset[str]] = {
+    "code": frozenset({"files", "branches", "commits"}),
+    "review": frozenset({"merge_requests", "notes", "discussions", "review"}),
+    "ci": frozenset({"pipelines", "jobs", "variables"}),
+    "issues": frozenset({"issues"}),
+    "release": frozenset({"tags", "releases"}),
+    "admin": frozenset({"projects", "groups", "approvals"}),
+}
+
+
+class UnknownToolsetError(ValueError):
+    """MCP_TOOLSETS named a group this server does not define."""
+
+
+def parse_toolsets(raw: str | None) -> set[str] | None:
+    """Resolve MCP_TOOLSETS / --toolsets to the set of raw tags to allowlist.
+
+    None, empty/whitespace, or a list containing ``all`` returns ``None`` — no filtering,
+    every tool listed (today's default). Names are lowercase, comma-separated, trimmed. An
+    unknown name raises ``UnknownToolsetError`` naming the offenders and every valid group.
+    """
+    if not raw or not raw.strip():
+        return None
+    names = [n.strip().lower() for n in raw.split(",") if n.strip()]
+    if not names or "all" in names:
+        return None
+    unknown = [n for n in names if n not in TOOLSET_GROUPS]
+    if unknown:
+        valid = ", ".join([*TOOLSET_GROUPS, "all"])
+        msg = f"Unknown MCP_TOOLSETS group(s): {', '.join(unknown)}. Valid groups: {valid}"
+        raise UnknownToolsetError(msg)
+    tags: set[str] = set()
+    for name in names:
+        tags |= TOOLSET_GROUPS[name]
+    return tags
+
+
+def _apply_toolsets(server: FastMCP, raw: str | None) -> None:
+    """Allowlist tools for the selected toolsets, keeping every resource and prompt.
+
+    fastmcp 4.1.6: ``enable(tags=..., only=True)`` switches to allowlist mode over *all*
+    component types, so resources and prompts would vanish; the chained
+    ``enable(components=...)`` re-lists every resource/template/prompt. This runs before the
+    read-only ``disable(tags={"write"})`` so the lock stays the last word — an allowlisted
+    group still carries its write tools until the lock removes them. A no-op when no toolset
+    is selected, so the default server is untouched.
+    """
+    tags = parse_toolsets(raw)
+    if tags is None:
+        return
+    server.enable(tags=tags, only=True).enable(components={"resource", "template", "prompt"})
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     config = GitLabConfig.from_env()
@@ -96,6 +157,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     config.validate()
     pkg_version = version("mcp-gitlab")
     _log.info("mcp-gitlab %s starting", pkg_version)
+    _apply_toolsets(server, os.getenv("MCP_TOOLSETS"))
     if config.read_only:
         _log.info("GitLab: %s", config.url)
         _lock_read_only(server, sources=read_only_sources("GITLAB_READ_ONLY"))
