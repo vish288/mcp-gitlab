@@ -22,6 +22,8 @@ from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools import ToolResult
 from mcp.types import Icon, TextContent
 from pydantic import Field
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from ..client import GitLabClient
 from ..config import GitLabConfig, read_only_sources
@@ -196,6 +198,17 @@ mcp = FastMCP(
     cache_ttl=300,
     cache_scope="private",
 )
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(_request: Request) -> JSONResponse:
+    """Unauthenticated liveness probe for container and remote (HTTP transport) deployments.
+
+    FastMCP's auth guards ``/mcp``, not custom routes, so this stays reachable with no
+    credentials; it returns only the server name and package version — no config, no
+    secrets, no upstream call.
+    """
+    return JSONResponse({"status": "ok", "name": mcp.name, "version": version("mcp-gitlab")})
 
 
 def _get_client(ctx: Context) -> GitLabClient:
