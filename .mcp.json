@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "uvx",
+      "args": [
+        "mcp-gitlab@0.23.0"
+      ],
+      "env": {
+        "GITLAB_TOKEN": "${user_config.gitlab_token}",
+        "GITLAB_URL": "${user_config.gitlab_url}",
+        "MCP_READ_ONLY": "${user_config.mcp_read_only}"
+      }
+    }
+  }
+}

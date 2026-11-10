@@ -3,13 +3,13 @@ name: Reconcile releases
 on:
   schedule:
     - cron: "23 */6 * * *"
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers] only retries this repo's own failed Publish run; never checks out PR head or untrusted code
     workflows: [Publish]
     types: [completed]
   workflow_dispatch:
 jobs:
   reconcile:
-    uses: vish288/.github/.github/workflows/reconcile.yml@f59da4e8bae11ace9d2f69e43d8601ff9cb68c04 # v1.4.1
+    uses: vish288/.github/.github/workflows/reconcile.yml@32162d0f696f22bb25ba61c0d9f74ea4d5c5b8a7 # v1.5.0
     permissions:
       contents: read
       actions: write

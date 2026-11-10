@@ -1,0 +1,35 @@
+{
+  "name": "mcp-gitlab",
+  "displayName": "GitLab",
+  "version": "0.23.0",
+  "description": "GitLab MCP server (MCP 2026-07-28): projects, MRs, pipelines, CI/CD, issues; writes or read-only",
+  "author": {
+    "name": "vish288"
+  },
+  "homepage": "https://vish288.github.io/mcp-install?server=mcp-gitlab",
+  "repository": "https://github.com/vish288/mcp-gitlab",
+  "license": "MIT",
+  "userConfig": {
+    "gitlab_token": {
+      "type": "string",
+      "title": "GITLAB_TOKEN",
+      "description": "GitLab personal access token (token mode). Optional after `mcp-gitlab auth login`; also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_API_TOKEN",
+      "required": false,
+      "sensitive": true
+    },
+    "gitlab_url": {
+      "type": "string",
+      "title": "GITLAB_URL",
+      "description": "GitLab instance URL (e.g. https://gitlab.com)",
+      "required": true,
+      "sensitive": false
+    },
+    "mcp_read_only": {
+      "type": "string",
+      "title": "MCP_READ_ONLY",
+      "description": "Locks the server read-only: write tools and write-workflow prompts are not listed and nothing lifts the lock at runtime. Shared name across the mcp-* servers; set it in the deployer's env",
+      "required": false,
+      "sensitive": false
+    }
+  }
+}

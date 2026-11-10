@@ -30,7 +30,7 @@ permissions: {}
 
 jobs:
   prepare:
-    uses: vish288/.github/.github/workflows/publish-prepare.yml@f59da4e8bae11ace9d2f69e43d8601ff9cb68c04 # v1.4.1
+    uses: vish288/.github/.github/workflows/publish-prepare.yml@32162d0f696f22bb25ba61c0d9f74ea4d5c5b8a7 # v1.5.0
     with:
       dry_run: ${{ inputs.dry_run }}
     permissions:
@@ -68,7 +68,7 @@ jobs:
   finish:
     needs: [prepare, pypi]
     if: ${{ !cancelled() && !inputs.dry_run && (needs.prepare.outputs.pypi == 'done' || needs.pypi.result == 'success') }}
-    uses: vish288/.github/.github/workflows/publish-finish.yml@f59da4e8bae11ace9d2f69e43d8601ff9cb68c04 # v1.4.1
+    uses: vish288/.github/.github/workflows/publish-finish.yml@32162d0f696f22bb25ba61c0d9f74ea4d5c5b8a7 # v1.5.0
     with:
       dry_run: ${{ inputs.dry_run }}
       fail_at: ${{ inputs.fail_at }}

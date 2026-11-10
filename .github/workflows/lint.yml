@@ -5,4 +5,4 @@ permissions:
   contents: read
 jobs:
   lint:
-    uses: vish288/.github/.github/workflows/lint.yml@f59da4e8bae11ace9d2f69e43d8601ff9cb68c04 # v1.4.1
+    uses: vish288/.github/.github/workflows/lint.yml@32162d0f696f22bb25ba61c0d9f74ea4d5c5b8a7 # v1.5.0
