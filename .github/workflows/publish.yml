@@ -18,7 +18,7 @@ on:
       fail_at:
         description: "Test hook: fail this job on attempt 1, before it writes, when its target is not done"
         type: choice
-        options: [none, pypi, release, registry]
+        options: [none, pypi, release, registry, image]
         default: none
 
 # One run per tag. A duplicate (reconcile or a manual re-dispatch) waits, then finds everything done.
@@ -30,7 +30,7 @@ permissions: {}
 
 jobs:
   prepare:
-    uses: vish288/.github/.github/workflows/publish-prepare.yml@cf0da43c7491a2b77b19afdc765da33b17208330 # v1.6.1
+    uses: vish288/.github/.github/workflows/publish-prepare.yml@dc5dc3596ee1ad2931a147da13148c7b80437e24 # v1.6.2
     with:
       dry_run: ${{ inputs.dry_run }}
     permissions:
@@ -68,7 +68,7 @@ jobs:
   finish:
     needs: [prepare, pypi]
     if: ${{ !cancelled() && !inputs.dry_run && (needs.prepare.outputs.pypi == 'done' || needs.pypi.result == 'success') }}
-    uses: vish288/.github/.github/workflows/publish-finish.yml@cf0da43c7491a2b77b19afdc765da33b17208330 # v1.6.1
+    uses: vish288/.github/.github/workflows/publish-finish.yml@dc5dc3596ee1ad2931a147da13148c7b80437e24 # v1.6.2
     with:
       dry_run: ${{ inputs.dry_run }}
       fail_at: ${{ inputs.fail_at }}
@@ -76,3 +76,5 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      packages: write
+      attestations: write

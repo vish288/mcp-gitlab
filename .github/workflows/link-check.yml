@@ -8,4 +8,4 @@ permissions:
   contents: read
 jobs:
   links:
-    uses: vish288/.github/.github/workflows/link-check.yml@cf0da43c7491a2b77b19afdc765da33b17208330 # v1.6.1
+    uses: vish288/.github/.github/workflows/link-check.yml@dc5dc3596ee1ad2931a147da13148c7b80437e24 # v1.6.2

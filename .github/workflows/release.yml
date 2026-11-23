@@ -23,11 +23,11 @@ on:
         description: "Test hook forwarded to publish.yml"
         required: false
         type: choice
-        options: [none, pypi, release, registry]
+        options: [none, pypi, release, registry, image]
         default: none
 jobs:
   release:
-    uses: vish288/.github/.github/workflows/release.yml@cf0da43c7491a2b77b19afdc765da33b17208330 # v1.6.1
+    uses: vish288/.github/.github/workflows/release.yml@dc5dc3596ee1ad2931a147da13148c7b80437e24 # v1.6.2
     with:
       bump: ${{ inputs.bump }}
       version: ${{ inputs.version }}

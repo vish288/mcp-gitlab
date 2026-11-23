@@ -1,0 +1,32 @@
+# Conformance scenarios this server does not pass yet. Every entry needs a reason.
+# A baselined entry that PASSES fails the run (stale baseline); prune on each suite bump.
+server:
+  # The suite drives tools that exist only on the conformance reference server.
+  - tools-call-image              # reference server's test_image_content tool
+  - tools-call-audio              # reference server's test_audio_content tool
+  - tools-call-embedded-resource  # reference server's test_embedded_resource tool
+  - tools-call-mixed-content      # reference server's test_multiple_content_types tool
+  - tools-call-with-progress      # reference server's test_tool_with_progress tool
+  - server-stateless:sep-2575-server-rejects-undeclared-capability # real gap, vish288/workbench-backlog#171
+  - server-stateless:sep-2575-missing-capability-http-400 # real gap, vish288/workbench-backlog#171
+  - dns-rebinding-protection:localhost-host-rebinding-rejected # real gap, vish288/workbench-backlog#172
+  - input-required-result-basic-elicitation:sep-2322-elicitation-incomplete # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-basic-sampling:sep-2322-sampling-incomplete # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-basic-list-roots:sep-2322-list-roots-incomplete # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-request-state:sep-2322-request-state-incomplete # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-multiple-input-requests:sep-2322-multiple-inputs-incomplete # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-multi-round:sep-2322-multi-round-r1 # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-non-tool-request:sep-2322-non-tool-incomplete # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-result-type:sep-2322-result-type-included # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-tampered-state:sep-2322-reject-tampered-state # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-capability-check:sep-2322-respect-client-capabilities # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-missing-input-response:sep-2322-missing-response-rerequests # MRTR not implemented, vish288/workbench-backlog#157
+  - input-required-result-validate-input:sep-2322-error-on-protocol-error # MRTR not implemented, vish288/workbench-backlog#157
+  - completion-complete # reference server fixture (ref/prompt test_prompt_with_arguments)
+  - resources-read-text # reference server fixture (test://static-text)
+  - resources-read-binary # reference server fixture (test://static-binary)
+  - resources-templates-read # reference server fixture (test:// resource template)
+  - prompts-get-simple # reference server fixture (test_simple_prompt)
+  - prompts-get-with-args # reference server fixture (test_prompt_with_arguments)
+  - prompts-get-embedded-resource # reference server fixture (test_prompt_with_embedded_resource)
+  - prompts-get-with-image # reference server fixture (test_prompt_with_image)
