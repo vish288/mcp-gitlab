@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -63,7 +64,7 @@ def _is_placeholder(url: str) -> bool:
 
 def _is_badge_image(url: str) -> bool:
     """Badge images (shields.io) can be flaky — skip them."""
-    return "img.shields.io" in url
+    return urlparse(url).hostname == "img.shields.io"
 
 
 def _is_schema_url(url: str) -> bool:

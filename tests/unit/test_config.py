@@ -217,7 +217,7 @@ def test_secrets_absent_from_repr():
     assert "glpat-supersecret" not in text
     assert "oauth-secret-value" not in text
     assert "jwt-signing-key" not in text
-    assert "https://gitlab.example.com" in text  # non-secret fields still shown
+    assert f"url={config.url!r}" in text  # non-secret fields still shown
 
 
 def test_oauth_base_url_strips_trailing_slash():
