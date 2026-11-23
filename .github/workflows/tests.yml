@@ -5,6 +5,6 @@ permissions:
   contents: read
 jobs:
   test:
-    uses: vish288/.github/.github/workflows/tests.yml@47b184e33b3745adf2a6beaa45d76984433671e4 # v1.6.0
+    uses: vish288/.github/.github/workflows/tests.yml@cf0da43c7491a2b77b19afdc765da33b17208330 # v1.6.1
     with:
       coverage_min: 98
