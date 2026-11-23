@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.25.1] - 2026-11-23
+
+### Features
+- feat(release): list the GHCR image in the MCP registry (0333b99)
+
+
 ## [0.25.0] - 2026-11-23
 
 ### Tests

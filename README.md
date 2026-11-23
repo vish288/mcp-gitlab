@@ -674,13 +674,13 @@ user, and defaults to locked read-only (`MCP_READ_ONLY=true`); override it to al
 # locked read-only (the image default) — stdio for an MCP client
 docker run --rm -i \
   -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
-  ghcr.io/vish288/mcp-gitlab:0.25.0
+  ghcr.io/vish288/mcp-gitlab:0.25.1
 
 # allow writes: override the read-only default
 docker run --rm -i \
   -e MCP_READ_ONLY=false \
   -e GITLAB_URL=https://gitlab.example.com -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
-  ghcr.io/vish288/mcp-gitlab:0.25.0
+  ghcr.io/vish288/mcp-gitlab:0.25.1
 ```
 
 For an HTTP transport, append `--transport streamable-http --host 0.0.0.0`; a non-loopback bind in
@@ -690,7 +690,7 @@ Verify the build provenance before you run it. The attestation is signed by the 
 publish workflow in `vish288/.github`, not by this repo, hence `--signer-repo`:
 
 ```bash
-gh attestation verify oci://ghcr.io/vish288/mcp-gitlab:0.25.0 -R vish288/mcp-gitlab --signer-repo vish288/.github
+gh attestation verify oci://ghcr.io/vish288/mcp-gitlab:0.25.1 -R vish288/mcp-gitlab --signer-repo vish288/.github
 ```
 
 To build from source instead (uv, the committed `uv.lock`), run `docker build -t mcp-gitlab .` and
