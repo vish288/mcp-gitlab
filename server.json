@@ -113,6 +113,99 @@
           "isSecret": true
         }
       ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/vish288/mcp-gitlab:0.25.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GITLAB_TOKEN",
+          "description": "GitLab personal access token (token mode). Optional after `mcp-gitlab auth login`; also accepts GITLAB_PAT, GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_API_TOKEN",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "GITLAB_URL",
+          "description": "GitLab instance URL (e.g. https://gitlab.com)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_READ_ONLY",
+          "description": "Alias for MCP_READ_ONLY. Any value other than false/0/no/off/empty locks the server read-only; --read-only can only raise the lock",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "MCP_READ_ONLY",
+          "description": "Locks the server read-only: write tools and write-workflow prompts are not listed and nothing lifts the lock at runtime. Shared name across the mcp-* servers; set it in the deployer's env",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "MCP_TOOLSETS",
+          "description": "Comma list of tool groups to expose (code, review, ci, issues, release, admin); unset or 'all' lists every tool. Shrinks tools/list for clients with a tool budget; MCP_READ_ONLY still applies after the selection",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_AUTH",
+          "description": "Authentication mode: token (default) or oauth (OAuth 2.1 proxy; streamable-http only)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_CLIENT_ID",
+          "description": "Application ID of the GitLab OAuth app (oauth mode, or local sign-in on a self-managed instance)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_CLIENT_SECRET",
+          "description": "Secret of the GitLab OAuth app (oauth mode)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "GITLAB_OAUTH_BASE_URL",
+          "description": "Public URL of this server, no trailing slash (oauth mode); redirect URI is <base>/auth/callback",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_SCOPES",
+          "description": "Space-separated GitLab scopes required on every request (oauth mode; default api)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "GITLAB_OAUTH_JWT_KEY",
+          "description": "FastMCP JWT signing key, >=32 random chars (oauth mode; defaults to one derived from the client secret)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "GITLAB_HTTP_BEARER_TOKEN",
+          "description": "Bearer token (min 16 chars) required to bind an HTTP transport to a non-loopback host; clients send it as 'Authorization: Bearer <token>' (token mode; --auth oauth has its own sign-in)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
     }
   ]
 }
