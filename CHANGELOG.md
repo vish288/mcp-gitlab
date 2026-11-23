@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.25.0] - 2026-11-23
+
+### Tests
+- test: assert URL hosts without substring matching (5a0c479)
+
+### Chores
+- chore(fleet): template v1.6.2 (e304791)
+- chore(deps): weekly patch 2026-11-22 (00b028c)
+- chore(deps): weekly patch 2026-11-15 (342d994)
+
+
 ## [0.24.0] - 2026-11-10
 
 ### Features
